@@ -393,6 +393,31 @@ export class Log extends Base<"LogId"> {
   execution: JobExecution;
 }
 
+// @Entity()
+// @Index(["name", "digest"], { unique: true })
+// export class ExternalDataExportPointer extends Base<"ExternalDataExportPointerId"> {
+//   @Column("text")
+//   name: string;
+
+//   // Store up to 64 character digests. We may want this to be stored as bytes
+//   // later on but typeorm has some annoyances dealing with that. This won't be a
+//   // very large table (ideally) so this should hopefully be ok.
+//   @Column("varchar", {
+//     length: 64,
+//   })
+//   digest: string;
+
+//   // Points to where we store the data in cloud storage (so we can reference in
+//   // the future)
+//   @Column("text")
+//   path: string;
+
+//   // Details on what we've stored. For pragmatism's sake, right now this is
+//   // field of anything.
+//   @Column("jsonb", { default: {} })
+//   details: object;
+// }
+
 /******************************
  * MATERIALIZED VIEWS
  * Not all views are possible via TimescaleDB continuous aggregates (e.g. DISTINCT)
