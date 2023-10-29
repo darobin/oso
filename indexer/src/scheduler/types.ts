@@ -138,8 +138,8 @@ export class CollectorErrors extends GenericError {
   }
 }
 
-export class CollectorRegistrationError extends GenericError {}
-export class CollectorDoesNotExistError extends GenericError {}
+export class CollectorRegistrationError extends GenericError { }
+export class CollectorDoesNotExistError extends GenericError { }
 
 type LockData = {
   execution: {
@@ -353,8 +353,7 @@ export type ArtifactCommitmentSummary = {
 };
 
 export class ArtifactRecordsCommitmentWrapper
-  implements IArtifactGroupCommitmentProducer, IArtifactGroupCommitmentConsumer
-{
+  implements IArtifactGroupCommitmentProducer, IArtifactGroupCommitmentConsumer {
   private collectorName: string;
   private range: Range;
   private promises: Promise<ArtifactCommitmentSummary>[];
@@ -429,8 +428,7 @@ export class ArtifactRecordsCommitmentWrapper
                   seenCount += 1;
                   this.duplicatesTracker[artifact.id] = seenCount;
                   logger.info(
-                    `completed events for "${this.collectorName} on Artifact[${
-                      artifact.id
+                    `completed events for "${this.collectorName} on Artifact[${artifact.id
                     }] for ${rangeToString(this.range)}`,
                   );
                 } catch (err) {
@@ -1110,10 +1108,10 @@ export class BaseScheduler implements IScheduler {
       const missing = reindex
         ? artifacts
         : await this.findMissingArtifactsFromEventPointers(
-            range,
-            artifacts,
-            collectorReg.name,
-          );
+          range,
+          artifacts,
+          collectorReg.name,
+        );
 
       const committer = ArtifactRecordsCommitmentWrapper.setup(
         collectorReg.name,
