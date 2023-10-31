@@ -202,6 +202,40 @@ export type ExecutionMode = "all-at-once" | "progressive";
 //   periodically execute.
 export type CollectorType = "event" | "periodic";
 
+export interface Resource {
+  locator: string;
+  type: string;
+  value: any;
+}
+
+export interface ResourceLock {
+  id: number;
+  locator: string;
+  type: string;
+}
+
+export interface ReservedResourcesResponse {
+  get(name: string): Resource;
+  lockJSON(): string;
+}
+
+export interface IResourceTypeProvider {
+  // Returns a dictionary of resources by an identifier. That identifier should
+  // be unique. 
+  listResources(): Promise<Resource[]>
+}
+
+export interface IResourceReservationService {
+  registerResourceType(name: string, provider: IResourceTypeProvider): void;
+
+  reserveResources(constraints: ResourceConstraint[]): Promise<ReservedResourcesResponse | null>;
+}
+
+export type ResourceConstraint = {
+  name: string;
+  type: string;
+}
+
 interface CollectorRegistration {
   name: string;
 
@@ -210,6 +244,8 @@ interface CollectorRegistration {
   group?: string;
 
   schedule: Schedule;
+
+  constraints?: ResourceConstraint[]
 }
 
 export interface EventCollectorRegistration extends CollectorRegistration {

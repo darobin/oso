@@ -502,9 +502,6 @@ export class EventPointer extends Base<"EventPointerId"> {
 @Entity()
 @Index(["scheduledTime", "scheduleType", "collector"], { unique: true })
 export class Job extends Base<"JobId"> {
-  @Column("text", { nullable: true })
-  group: string | null;
-
   @Column("timestamptz")
   scheduledTime: Date;
 
