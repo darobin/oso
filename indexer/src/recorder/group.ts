@@ -64,6 +64,14 @@ export class EventGroupRecorder<T> implements IEventGroupRecorder<T> {
   }
 
   async wait(group: T): Promise<AsyncResults<string>> {
+    const handles = this.getGroupRecordHandles(group);
+    if (handles.length === 0) {
+      console.log("no handles. resolving now");
+      return {
+        errors: [],
+        success: [],
+      };
+    }
     return new Promise((resolve) => {
       const cb: EventGroupRecorderCallback<string> = (results) => {
         resolve(results);

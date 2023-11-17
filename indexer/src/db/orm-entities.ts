@@ -113,10 +113,12 @@ abstract class Base<IdTag> extends BaseEntity {
   }
 }
 
+export type ArtifactId = Brand<number, "ArtifactId">;
+
 // We need this to prevent circular references for Typeorm's relational mapping.
 // This interface should only need to be internal to this file.
 interface IArtifact {
-  id: Brand<number, "ArtifactId">;
+  id: ArtifactId;
   type: ArtifactType;
   namespace: ArtifactNamespace;
   name: string;

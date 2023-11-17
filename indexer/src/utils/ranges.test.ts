@@ -85,14 +85,14 @@ describe("findMissingRanges", () => {
   });
 
   it("should handle ranges missing entirely", () => {
-    const beginDate: DateTime = DateTime.fromISO("2023-01-01T00:00:00");
-    const endDate: DateTime = DateTime.fromISO("2023-01-01T12:00:00");
+    const beginDate: DateTime = DateTime.fromISO("2023-01-01T00:00:00Z");
+    const endDate: DateTime = DateTime.fromISO("2023-01-01T12:00:00Z");
 
     const missingRanges: Range[] = findMissingRanges(beginDate, endDate, []);
 
     const expectedRange = rangeFromISO(
-      "2023-01-01T00:00:00",
-      "2023-01-01T12:00:00",
+      "2023-01-01T00:00:00Z",
+      "2023-01-01T12:00:00Z",
     );
 
     expect(missingRanges.length).toEqual(1);
