@@ -44,5 +44,9 @@ jobs:
           node-version: "18.x"
       - name: Build
         run: pnpm build:indexer
+
+      - name: output node version
+        run: node -v
+
       - name: Run
         run: pnpm start:indexer importOssDirectory
