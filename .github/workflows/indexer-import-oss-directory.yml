@@ -46,7 +46,7 @@ jobs:
         run: pnpm build:indexer
 
       - name: output node version
-        run: node -v
+        run: node -v && pwd && ls -halt
 
       - name: Run
         run: pnpm start:indexer importOssDirectory
