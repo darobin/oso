@@ -53,4 +53,4 @@ jobs:
         run: node -v && pwd && ls -halt
 
       - name: Run
-        run: cd indexer && pnpm start importOssDirectory
+        run: cd indexer && cat tsconfig.json && pnpm start importOssDirectory
