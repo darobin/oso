@@ -42,6 +42,10 @@ jobs:
         with:
           #cache: "pnpm"
           node-version: "18.x"
+
+      - name: Install ts-node globally
+        run: npm install -g ts-node
+
       - name: Build
         run: pnpm build:indexer
 
