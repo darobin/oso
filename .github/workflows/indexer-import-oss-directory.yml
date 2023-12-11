@@ -49,4 +49,4 @@ jobs:
         run: node -v && pwd && ls -halt
 
       - name: Run
-        run: pnpm start:indexer importOssDirectory
+        run: cd indexer && pnpm indexer importOssDirectory
