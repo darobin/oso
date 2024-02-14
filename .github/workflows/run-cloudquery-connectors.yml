@@ -1,0 +1,75 @@
+# THIS IS A TEMPORARY CRON'D WORKER TO AUTOMATICALLY RUN GITHUB JOBS. EVENTUALLY
+# THESE SHOULD BE SPAWNED INSIDE THE SCHEDULER FROM WITHIN NODE
+
+# Execute the worker for a specific group
+name: os-observer-indexer-worker-npm
+env:
+  CLOUDSQL_DB_HOST: ${{ vars.DB_HOST }}
+  CLOUDSQL_DB_PORT: ${{ vars.DB_PORT }}
+  CLOUDSQL_DB_USER: ${{ vars.DB_USER }}
+  DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+  DB_DATABASE: ${{ vars.DB_DATABASE }}
+  X_GITHUB_GRAPHQL_API: ${{ vars.X_GITHUB_GRAPHQL_API }}
+  X_GITHUB_TOKEN: ${{ secrets.X_GITHUB_TOKEN }}
+  DUNE_API_KEY: ${{ secrets.DUNE_API_KEY }}
+  CACHE_DIR: /tmp/oso/cache
+  RUN_DIR: /tmp/oso/run
+  LOG_FILE: /tmp/oso/log/run.log
+  CLOUDQUERY_VERSION: 5.4.0
+
+# Trigger the workflow when:
+on:
+  workflow_dispatch:
+  # Allows you to run this workflow manually from the Actions tab
+  schedule:
+    # Schedule every day at 02:00 UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  run-cloudquery-connectors:
+    name: run
+    environment: warehouse
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' 
+
+      - name: Install python dependencies
+        run: |
+          pip install poetry && poetry install
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          run_install: |
+            - recursive: true
+              args: [--frozen-lockfile, --strict-peer-dependencies]
+    
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v3
+        with:
+          cache: "pnpm"
+          node-version: "18.x"
+    
+      - name: Build
+        shell: bash
+        run: pnpm build:cloudquery
+
+      - name: Install cloudquery
+        run: |
+          curl -L https://github.com/cloudquery/cloudquery/releases/download/cli-v${CLOUDQUERY_VERSION}/cloudquery_linux_amd64 -o cloudquery &&
+          chmod a+x cloudquery
+
+      - name: Run the oss-directory cloudquery connector
+        run: |
+          cloudquery sync .github/cloudquery/

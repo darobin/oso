@@ -15,7 +15,10 @@ Open Source Observer is a free analytics suite that helps funders measure the im
   - [on Vercel](https://www.opensource.observer/docs) - Production build
 - `/frontend`: frontend application (Next.js)
   - [on Vercel](https://www.opensource.observer) - Production build
-- `/indexer`: Data indexer
+- `/warehouse`: Everything for the OSO data warehouse
+  - `/warehouse/integrations` - Our data integrations (cloudquery/airbyte)
+  - `/warehouse/
+- `/indexer`: \_[Deprecated] Data indexer
   - [on GitHub actions](https://github.com/opensource-observer/oso/actions/workflows/indexer-autocrawl.yml)
 
 ## Frontend Quickstart
