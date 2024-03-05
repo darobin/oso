@@ -43,7 +43,7 @@ class ContractUsagePlugin(plugin.Plugin):
 
     def get_tables(self, options: plugin.TableOptions) -> List[plugin.Table]:
         all_tables: List[plugin.Table] = [
-            tables.ContractUsageTable(),
+            tables.ContractUsageTable(self._spec.chain),
         ]
 
         # set parent table relationships

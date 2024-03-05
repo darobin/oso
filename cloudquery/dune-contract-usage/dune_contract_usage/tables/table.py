@@ -10,9 +10,9 @@ from ..client import Client
 
 
 class ContractUsageTable(Table):
-    def __init__(self) -> None:
+    def __init__(self, chain: str) -> None:
         super().__init__(
-            name="contract_usage",
+            name=f"{chain}_contract_usage",
             title="Daily contract usage",
             columns=[
                 Column("date", pa.date64()),

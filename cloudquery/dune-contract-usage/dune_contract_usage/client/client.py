@@ -11,6 +11,7 @@ DEFAULT_QUEUE_SIZE = 10
 @dataclass
 class Spec:
     csv_folder_path: str
+    chain: str
     size: int = field(default=10)
     concurrency: int = field(default=DEFAULT_CONCURRENCY)
     queue_size: int = field(default=DEFAULT_QUEUE_SIZE)
@@ -18,6 +19,8 @@ class Spec:
     def validate(self):
         if self.csv_folder_path is None:
             raise Exception("csv_folder_path must be provided")
+        if self.chain is None:
+            raise Exception("chain must be provided")
 
 
 class LoadDuneCSVClient:

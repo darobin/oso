@@ -18,7 +18,9 @@ def collect():
     print("GC garbage %d" % len(gc.garbage))
 
 
-def load_csvs_in_folder(folder_path: str) -> Generator[DuneContractUsage, None, None]:
+def load_csvs_in_folder(
+    folder_path: str, no_file_intersections: bool = True
+) -> Generator[DuneContractUsage, None, None]:
     # Get a list of CSV files in the folder
     csv_files = [file for file in os.listdir(folder_path) if file.endswith(".csv")]
 
@@ -41,8 +43,9 @@ def load_csvs_in_folder(folder_path: str) -> Generator[DuneContractUsage, None, 
             if not last_date:
                 last_date = usage_row.date
                 last_file = filename
+            # if the last date changes then
             if last_date != usage_row.date:
-                if last_file != filename:
+                if last_file != filename and not no_file_intersections:
                     if usage_row.date > last_date:
                         if len(queue) == 0:
                             raise Exception("Missing dates")
@@ -59,7 +62,7 @@ def load_csvs_in_folder(folder_path: str) -> Generator[DuneContractUsage, None, 
                             # doesn't handle that well and runs out of memory. This
                             # sleep here allows the consumer to consume depending on
                             # the size of the queue we just enqueued
-                            time.sleep(len(queue) / 5000)
+                            # time.sleep(len(queue) / 5000)
                             queue.clear()
                     else:
                         continue
@@ -82,6 +85,13 @@ def load_csvs_in_folder(folder_path: str) -> Generator[DuneContractUsage, None, 
                         time.sleep(len(queue) / 5000)
                         queue.clear()
             queue.append(usage_row)
+        if len(queue) > 0 and no_file_intersections:
+            print("Emptying queue for %s of %d items" % (last_date, len(queue)))
+            last_date = queue[-1].date
+            last_file = filename
+            for r in queue:
+                yield r
+            queue.clear()
 
 
 def run():
