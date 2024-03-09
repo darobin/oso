@@ -297,6 +297,8 @@ importers:
         specifier: ^5.3.3
         version: 5.3.3
 
+  warehouse: {}
+
   warehouse/cloudquery-github-resolve-repos:
     dependencies:
       '@apidevtools/json-schema-ref-parser':

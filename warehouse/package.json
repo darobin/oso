@@ -1,0 +1,12 @@
+{
+  "name": "@opensource-observer/warehouse",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "install": "cd ../ && poetry install",
+    "build": "echo \"The warehouse doesn't build anything from pnpm.\"",
+    "lint": "cd ../ && poetry run sqlfluff lint --dialect bigquery ./warehouse/dbt/models"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

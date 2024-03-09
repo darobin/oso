@@ -1,6 +1,7 @@
 packages:
   - "warehouse/cloudquery-oss-directory"
   - "warehouse/cloudquery-github-resolve-repos"
+  - "warehouse"
   - "apps/docs"
   - "apps/frontend"
   - "apps/hasura"
