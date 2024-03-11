@@ -1,3 +1,7 @@
+[project]
+name = "example-plugin"
+version = "1.0.0"
+
 [tool.poetry]
 name = "example-plugin"
 version = "1.0.0"

@@ -1,3 +1,7 @@
+[project]
+name = "dune-contract-usage"
+version = "1.0.0"
+
 [tool.poetry]
 name = "dune-contract-usage"
 version = "1.0.0"

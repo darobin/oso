@@ -1,3 +1,18 @@
+[project]
+name = "oso"
+version = "0.1.0"
+requires-python = ">= 3.11,<3.12"
+dependencies = [
+    "google-cloud-bigquery>=3.17.1",
+    "pendulum>=3.0.0,<4.0.0",
+    "google-api-python-client>=2.116.0",
+    "cloud-sql-python-connector>=1.7.0",
+    "sqlalchemy>=2.0.28",
+    "google-cloud-storage>=2.15.0",
+    "python-dotenv>=1.0.1",
+    "dbt-bigquery>=1.7.6",
+]
+
 [tool.poetry]
 name = "oso"
 version = "1.0.0"
@@ -10,8 +25,28 @@ packages = [
     { include = "common", from = "warehouse/" },
 ]
 
+[tool.pdm]
+[tool.pdm.build]
+includes = ['warehouse/bq2cloudsql', 'warehouse/common']
+
+[tool.pdm.resolution.overrides]
+python-dotenv = "1.0.1"
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "-e file:///${PROJECT_ROOT}/warehouse/cloudquery-example-plugin#egg=example-plugin",
+    "-e file:///${PROJECT_ROOT}/warehouse/cloudquery-dune-contract-usage#egg=dune-contract-usage",
+    "sqlfluff>=2.3.5",
+    "sqlfluff-templater-dbt>=2.3.5",
+    "shandy-sqlfmt[jinjafmt]>=0.21.2",
+    "ipython>=8.22.2",
+]
+
+[project.scripts]
+bq2cloudsql = 'bq2cloudsql.script:run'
+
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<3.13"
 example-plugin = { path = "warehouse/cloudquery-example-plugin", develop = true }
 dune-contract-usage = { path = "warehouse/cloudquery-dune-contract-usage", develop = true }
 google-cloud-bigquery = "^3.17.1"
@@ -27,7 +62,6 @@ dbt-bigquery = "^1.7.0"
 bq2cloudsql = 'bq2cloudsql.script:run'
 
 [tool.poetry.group.dev.dependencies]
-ipython = "^8.21.0"
 sqlfluff = "^2.3.5"
 sqlfluff-templater-dbt = "^2.3.5"
 shandy-sqlfmt = { extras = ["jinjafmt"], version = "^0.21.1" }
