@@ -474,8 +474,8 @@ def testing_goldsky(
         rows = client.query_and_wait(
             f"""
         SELECT worker, MAX(last_checkpoint)
-        FROM `{gs_config.project_id}.{gs_config.dataset_name}.{gs_config.table_name}_pointer_state`;
-        GROUP BY 1
+        FROM `{gs_config.project_id}.{gs_config.dataset_name}.{gs_config.table_name}_pointer_state`
+        GROUP BY 1;
         """
         )
 
