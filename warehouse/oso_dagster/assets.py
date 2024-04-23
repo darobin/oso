@@ -451,7 +451,7 @@ def testing_goldsky(
 
     gs_duckdb = GoldskyDuckDB.connect(
         f"_temp/{job_id}",
-        gs_config.bucket_key_id,
+        gs_config.bucket_name,
         gs_config.bucket_key_id,
         gs_config.bucket_secret,
         os.environ.get("DAGSTER_DUCKDB_PATH"),
@@ -460,6 +460,7 @@ def testing_goldsky(
 
     # For each worker
     for worker, queue in queues.worker_queues():
+        context.log.info(f"Loading for worker {worker}")
         load_goldsky_worker(
             job_id, context, gs_config, gs_context, gs_duckdb, worker, queue
         )

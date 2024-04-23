@@ -5,7 +5,7 @@ from dagster import DagsterLogManager
 
 
 class GoldskyDuckDB:
-    @staticmethod
+    @classmethod
     def connect(
         cls,
         destination_path: str,
