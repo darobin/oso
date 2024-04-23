@@ -302,35 +302,58 @@ def load_goldsky_worker(
 
     # Load all of the tables into goldsky
     with gs_context.bigquery.get_client() as client:
-        client.query_and_wait(
-            f"""
-            BEGIN
-                BEGIN TRANSACTION;
-                    LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{job_id}`
-                    FROM FILES (
-                        format = "PARQUET",
-                        uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
-                    );
-                    
-                    DELETE FROM `{config.project_id}.{config.dataset_name}.{config.table_name}` 
-                    WHERE id IN (
-                        SELECT id FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{job_id}`
-                    );
-
-                    INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}` 
-                    SELECT * FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{job_id}`;
-
-                    INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, latest_checkpoint)
-                    VALUES ('{worker}', {last_checkpoint});
-                    
-                COMMIT TRANSACTION
-                EXCEPTION WHEN ERROR THEN
-                -- Roll back the transaction inside the exception handler.
-                SELECT @@error.message;
-                ROLLBACK TRANSACTION;
-            END
-        """
+        dest_table_ref = client.get_dataset(config.dataset_name).table(
+            f"{config.table_name}_{worker}"
         )
+        new = False
+        try:
+            client.get_table(dest_table_ref)
+        except NotFound as exc:
+            if config.table_name in exc.message:
+                new = True
+
+        if not new:
+            client.query_and_wait(
+                f"""
+                BEGIN
+                    BEGIN TRANSACTION;
+                        LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
+                        FROM FILES (
+                            format = "PARQUET",
+                            uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
+                        );
+                        
+                        DELETE FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}` 
+                        WHERE id IN (
+                            SELECT id FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{job_id}`
+                        );
+
+                        INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}` 
+                        SELECT * FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`;
+
+                        INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, latest_checkpoint)
+                        VALUES ('{worker}', {last_checkpoint});
+
+                        DROP TABLE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`;
+                        
+                    COMMIT TRANSACTION
+                    EXCEPTION WHEN ERROR THEN
+                    -- Roll back the transaction inside the exception handler.
+                    SELECT @@error.message;
+                    ROLLBACK TRANSACTION;
+                END
+            """
+            )
+        else:
+            client.query_and_wait(
+                f"""
+                LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}`
+                FROM FILES (
+                    format = "PARQUET",
+                    uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
+                );
+            """
+            )
 
 
 def goldsky_into_worker_table(
