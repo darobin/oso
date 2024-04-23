@@ -62,7 +62,7 @@ class GoldskyDuckDB:
         self.log.info(f"removing duplicates for batch {batch_id}")
         self.conn.sql(
             f"""
-        CREATE TABLE deduped_{batch_id}
+        CREATE OR REPLACE TABLE deduped_{worker}_{batch_id}
         AS
         SELECT * FROM read_parquet('{self.full_dest_table_path(worker, batch_id)}')
         """
@@ -71,7 +71,7 @@ class GoldskyDuckDB:
         if not last:
             self.conn.sql(
                 f""" 
-            DELETE FROM deduped_{batch_id}
+            DELETE FROM deduped_{worker}_{batch_id}
             WHERE id in (
                 SELECT id FROM read_parquest('{self.full_dest_delete_path(worker, batch_id)}')
             )
@@ -80,7 +80,7 @@ class GoldskyDuckDB:
 
         self.conn.sql(
             f"""
-        COPY deduped_{batch_id} TO '{self.full_dest_deduped_path(worker, batch_id)}';
+        COPY deduped_{worker}_{batch_id} TO '{self.full_dest_deduped_path(worker, batch_id)}';
         """
         )
 
@@ -110,7 +110,7 @@ class GoldskyDuckDB:
         merged_table = f"merged_{worker}_{batch_id}"
         conn.sql(
             f"""
-        CREATE TABLE OR REPLACE {merged_table}
+        CREATE OR REPLACE TABLE {merged_table}
         AS
         SELECT *
         FROM checkpoint_{worker}_{batch_id}_0
@@ -154,7 +154,7 @@ class GoldskyDuckDB:
         # Create a table to store the ids for this
         conn.sql(
             f"""
-        CREATE TABLE OR REPLACE merged_ids_{worker}_{batch_id}
+        CREATE OR REPLACE TABLE merged_ids_{worker}_{batch_id}
         AS
         SELECT id as "id" FROM {merged_table}
         """
@@ -165,7 +165,7 @@ class GoldskyDuckDB:
             # Check for any intersections with the last table. We need to create a "delete patch"
             conn.sql(
                 f"""
-            CREATE TABLE OR REPLACE delete_patch_{worker}_{prev_batch_id}
+            CREATE OR REPLACE TABLE delete_patch_{worker}_{prev_batch_id}
             AS
             SELECT pmi.id 
             FROM merged_ids_{worker}_{prev_batch_id} AS pmi
