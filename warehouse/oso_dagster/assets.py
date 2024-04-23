@@ -309,10 +309,10 @@ def load_goldsky_worker(
         try:
             client.get_table(dest_table_ref)
         except NotFound as exc:
-            if config.table_name in exc.message:
-                new = True
+            new = True
 
         if not new:
+            context.log.info("Merging into worker table")
             client.query_and_wait(
                 f"""
                 BEGIN
@@ -345,6 +345,7 @@ def load_goldsky_worker(
             """
             )
         else:
+            context.log.info("Creating new worker table")
             client.query_and_wait(
                 f"""
                 LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}`
