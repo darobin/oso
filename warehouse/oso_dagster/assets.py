@@ -336,23 +336,35 @@ def load_goldsky_worker(
 
                         DROP TABLE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`;
                         
-                    COMMIT TRANSACTION
+                    COMMIT TRANSACTION;
                     EXCEPTION WHEN ERROR THEN
                     -- Roll back the transaction inside the exception handler.
                     SELECT @@error.message;
                     ROLLBACK TRANSACTION;
-                END
+                END;
             """
             )
         else:
             context.log.info("Creating new worker table")
             client.query_and_wait(
                 f"""
-                LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}`
-                FROM FILES (
-                    format = "PARQUET",
-                    uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
-                );
+                BEGIN
+                    BEGIN TRANSACTION;
+
+                        LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}`
+                        FROM FILES (
+                            format = "PARQUET",
+                            uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
+                        );
+                    
+                        INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, latest_checkpoint)
+                        VALUES ('{worker}', {last_checkpoint});
+                    COMMIT TRANSACTION;
+                    EXCEPTION WHEN ERROR THEN
+                    -- Roll back the transaction inside the exception handler.
+                    SELECT @@error.message;
+                    ROLLBACK TRANSACTION;
+                END;
             """
             )
 
