@@ -3,6 +3,7 @@ import re
 import arrow
 import heapq
 import duckdb
+import uuid
 from typing import Any, Mapping, List
 from enum import Enum
 from pathlib import Path
@@ -220,6 +221,9 @@ class GoldskyQueues:
             status[worker] = queue.len()
         return status
 
+    def worker_queues(self):
+        return self.queues.items()
+
 
 class GoldskyWorkerLoader:
     def __init__(self, worker: str):
@@ -389,7 +393,7 @@ def testing_goldsky(
     blobs = gcs_client.list_blobs("oso-dataset-transfer-bucket", prefix="goldsky")
 
     parsed_files = []
-    job_ids = set()
+    gs_job_ids = set()
     queues = GoldskyQueues()
     for blob in blobs:
         match = goldsky_re.match(blob.name)
@@ -398,7 +402,7 @@ def testing_goldsky(
             continue
         parsed_files.append(match)
         worker = match.group("worker")
-        job_ids.add(match.group("job_id"))
+        gs_job_ids.add(match.group("job_id"))
         checkpoint = int(match.group("checkpoint"))
         queues.enqueue(
             worker,
@@ -408,7 +412,57 @@ def testing_goldsky(
             ),
         )
 
+    if len(gs_job_ids) > 1:
+        raise Exception("We aren't currently handling multiple job ids")
+
+    gs_context = GoldskyContext(bigquery, gcs)
+
+    job_id = arrow.now().format("YYYYMMDDHHmm")
+
+    gs_config = GoldskyConfig(
+        "opensource-observer",
+        "oso-dataset-transfer-bucket",
+        "oso_raw_sources",
+        "optimism_traces",
+        "block_number",
+        100,
+        os.environ.get("DUCKDB_GCS_KEY_ID"),
+        os.environ.get("DUCKDB_GCS_SECRET"),
+    )
+
+    pointer_table = f"{gs_config.project_id}.{gs_config.dataset_name}.{gs_config.table_name}_pointer_state"
+
+    with bigquery.get_client() as client:
+        dataset = client.get_dataset(gs_config.dataset_name)
+        table_name = f"{gs_config.table_name}_pointer_state"
+        pointer_table_ref = dataset.table(table_name)
+        try:
+            client.get_table(pointer_table_ref)
+        except NotFound as exc:
+            if table_name in exc.message:
+                context.log.info("Pointer table not found.")
+                client.query_and_wait(
+                    f"""
+                CREATE TABLE {pointer_table} (worker STRING, last_checkpoint INT64);
+                """
+                )
+            else:
+                raise exc
+
+    gs_duckdb = GoldskyDuckDB.connect(
+        f"_temp/{job_id}",
+        gs_config.bucket_key_id,
+        gs_config.bucket_key_id,
+        gs_config.bucket_secret,
+        os.environ.get("DAGSTER_DUCKDB_PATH"),
+        context.log,
+    )
+
     # For each worker
+    for worker, queue in queues.worker_queues():
+        load_goldsky_worker(
+            job_id, context, gs_config, gs_context, gs_duckdb, worker, queue
+        )
 
     # Create a temporary table to load the current checkpoint
 
@@ -423,28 +477,10 @@ def testing_goldsky(
     # TODOS
     # Move the data into cold storage
 
-    item = queues.dequeue("0")
-    last_checkpoint = item.checkpoint - 1
-    while item:
-        if item.checkpoint > last_checkpoint:
-            if item.checkpoint - 1 != last_checkpoint:
-                context.log.info("Missing or checkpoints number jumped")
-        else:
-            raise Exception(
-                f"Unexpected out of order checkpoints current: {item.checkpoint} last: {last_checkpoint}"
-            )
-        if item.checkpoint % 10 == 0:
-            context.log.info(f"Processing {item.blob_name}")
-        last_checkpoint = item.checkpoint
-        item = queues.dequeue("0")
-
-    if len(job_ids) > 1:
-        raise Exception("We aren't currently handling multiple job ids")
-
     return MaterializeResult(
         metadata=dict(
-            job_id_count=len(job_ids),
-            job_ids=list(job_ids),
+            job_id_count=len(gs_job_ids),
+            job_ids=list(gs_job_ids),
             worker_count=len(queues.workers()),
             workers=list(queues.workers()),
             status=queues.status(),
