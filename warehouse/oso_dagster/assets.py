@@ -470,7 +470,7 @@ def testing_goldsky(
     with bigquery.get_client() as client:
         rows = client.query_and_wait(
             f"""
-        SELECT worker, MAX(last_checkpoint)
+        SELECT worker, MAX(last_checkpoint) AS last_checkpoint
         FROM `{gs_config.project_id}.{gs_config.dataset_name}.{gs_config.table_name}_pointer_state`
         GROUP BY 1;
         """
