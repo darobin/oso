@@ -89,17 +89,20 @@ class GoldskyDuckDB:
 
         size = len(blob_names)
 
+        checkpoint_views: List[str] = []
         for i in range(size):
-            self.log.debug(f"Blob {base}/{blob_names[i]}")
+            self.log.info(f"Creating a view for blob {base}/{blob_names[i]}")
             file_ref = f"{base}/{blob_names[i]}"
+            checkpoint_view = f"checkpoint_{batch_id}_{i}"
             conn.sql(
                 f"""
-            CREATE OR REPLACE VIEW checkpoint_{batch_id}_{i}
+            CREATE OR REPLACE VIEW {checkpoint_view}
             AS
             SELECT *
             FROM read_parquet('{file_ref}');
             """
             )
+            checkpoint_views.append(checkpoint_view)
 
         merged_table = f"merged_{batch_id}"
         try:
@@ -197,6 +200,18 @@ class GoldskyDuckDB:
         DROP TABLE {merged_table};
         """
         )
+        for checkpoint_view in checkpoint_views:
+            try:
+                conn.sql(
+                    f"""
+                DROP VIEW {checkpoint_view}
+                """
+                )
+            except:
+                # Ignore view dropping errors
+                self.log.warn(
+                    f"error occured dropping checkpoint view: {checkpoint_view}"
+                )
 
 
 def load_and_merge(
@@ -257,7 +272,7 @@ def load_and_merge(
         )
 
     for i in range(size - 1):
-        log.debug(f"Merging {blob_names[i+1]}")
+        log.info(f"Merging {blob_names[i+1]}")
         checkpoint_table = f"checkpoint_{batch_id}_{i+1}"
         rows = conn.sql(
             f"""
