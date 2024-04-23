@@ -325,8 +325,7 @@ def load_goldsky_worker(
                 );
             """
             )
-            client.query_and_wait(
-                f"""
+            tx_query = f"""
                 BEGIN
                     BEGIN TRANSACTION; 
                         DELETE FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}` 
@@ -346,7 +345,8 @@ def load_goldsky_worker(
                     ROLLBACK TRANSACTION;
                 END;
             """
-            )
+            context.log.debug(f"query: {tx_query}")
+            client.query_and_wait(tx_query)
             client.query_and_wait(
                 f"""
                 DROP TABLE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`;
