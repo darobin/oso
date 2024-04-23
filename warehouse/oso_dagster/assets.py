@@ -346,15 +346,15 @@ def load_goldsky_worker(
             )
         else:
             context.log.info("Creating new worker table")
-            client.query_and_wait(
-                f"""
+            query1 = f"""
                 LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
                 FROM FILES (
                     format = "PARQUET",
                     uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
                 );
             """
-            )
+            context.log.debug(f"query: {query1}")
+            client.query_and_wait(query1)
             rows = client.query_and_wait(
                 f"""
                 BEGIN
