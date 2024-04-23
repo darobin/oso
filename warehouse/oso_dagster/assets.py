@@ -426,7 +426,7 @@ def testing_goldsky(
         "oso_raw_sources",
         "optimism_traces",
         "block_number",
-        30,
+        100,
         os.environ.get("DUCKDB_GCS_KEY_ID"),
         os.environ.get("DUCKDB_GCS_SECRET"),
     )
