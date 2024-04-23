@@ -90,7 +90,7 @@ class GoldskyDuckDB:
         size = len(blob_names)
 
         for i in range(size):
-            self.log.debug(f"Blob {blob_names[i]}")
+            self.log.debug(f"Blob {base}/{blob_names[i]}")
             file_ref = f"{base}/{blob_names[i]}"
             conn.sql(
                 f"""
