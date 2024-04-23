@@ -336,7 +336,7 @@ def load_goldsky_worker(
                         INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}` 
                         SELECT * FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`;
 
-                        INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, latest_checkpoint)
+                        INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, last_checkpoint)
                         VALUES ('{worker}', {last_checkpoint}); 
                     COMMIT TRANSACTION;
                     EXCEPTION WHEN ERROR THEN
