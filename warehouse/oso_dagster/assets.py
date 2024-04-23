@@ -325,7 +325,7 @@ def load_goldsky_worker(
                         
                         DELETE FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}` 
                         WHERE id IN (
-                            SELECT id FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{job_id}`
+                            SELECT id FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
                         );
 
                         INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}` 
@@ -346,17 +346,22 @@ def load_goldsky_worker(
             )
         else:
             context.log.info("Creating new worker table")
+            client.query_and_wait(
+                f"""
+                LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
+                FROM FILES (
+                    format = "PARQUET",
+                    uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
+                );
+            """
+            )
             rows = client.query_and_wait(
                 f"""
                 BEGIN
-                    BEGIN TRANSACTION;
+                    BEGIN TRANSACTION; 
+                        ALTER TABLE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
+                        RENAME TO {config.table_name}_{worker};
 
-                        LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}`
-                        FROM FILES (
-                            format = "PARQUET",
-                            uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
-                        );
-                    
                         INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, latest_checkpoint)
                         VALUES ('{worker}', {last_checkpoint});
                     COMMIT TRANSACTION;
