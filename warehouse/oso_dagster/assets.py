@@ -476,6 +476,8 @@ def testing_goldsky(
         """
         )
         for row in rows:
+            print(row)
+            context.log.debug(row)
             worker_status[row.worker] = row.last_checkpoint
 
     for blob in blobs:
