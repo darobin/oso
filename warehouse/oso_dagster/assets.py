@@ -433,7 +433,7 @@ def testing_goldsky(
         "oso_raw_sources",
         "optimism_traces",
         "block_number",
-        int(os.environ.get("GOLDSKY_BATCH_SIZE", "10")),
+        int(os.environ.get("GOLDSKY_BATCH_SIZE", "20")),
         os.environ.get("DUCKDB_GCS_KEY_ID"),
         os.environ.get("DUCKDB_GCS_SECRET"),
     )
