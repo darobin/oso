@@ -365,7 +365,7 @@ def load_goldsky_worker(
             client.query_and_wait(query1)
             rows = client.query_and_wait(
                 f"""
-                INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, latest_checkpoint)
+                INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, last_checkpoint)
                 VALUES ('{worker}', {last_checkpoint});
             """
             )
