@@ -346,7 +346,7 @@ def load_goldsky_worker(
             )
         else:
             context.log.info("Creating new worker table")
-            client.query_and_wait(
+            rows = client.query_and_wait(
                 f"""
                 BEGIN
                     BEGIN TRANSACTION;
@@ -367,6 +367,7 @@ def load_goldsky_worker(
                 END;
             """
             )
+            context.log.info(rows)
 
 
 def goldsky_into_worker_table(
@@ -442,6 +443,16 @@ def testing_goldsky(
         os.path.join("goldsky", "optimism-traces")
         + r"/(?P<job_id>\d+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(?P<worker>\d+)-(?P<checkpoint>\d+).parquet"
     )
+    gs_config = GoldskyConfig(
+        "opensource-observer",
+        "oso-dataset-transfer-bucket",
+        "oso_raw_sources",
+        "optimism_traces",
+        "block_number",
+        int(os.environ.get("GOLDSKY_BATCH_SIZE", "20")),
+        os.environ.get("DUCKDB_GCS_KEY_ID"),
+        os.environ.get("DUCKDB_GCS_SECRET"),
+    )
 
     gcs_client = gcs.get_client()
     blobs = gcs_client.list_blobs("oso-dataset-transfer-bucket", prefix="goldsky")
@@ -451,6 +462,18 @@ def testing_goldsky(
     queues = GoldskyQueues(
         enable_testing=os.environ.get("GOLDSKY_ENABLE_TESTING") in ["True", "true"]
     )
+
+    worker_status = {}
+    # Get the current state
+    with bigquery.get_client() as client:
+        rows = client.query_and_wait(
+            f"""
+        SELECT worker, MAX(last_checkpoint)
+        FROM `{gs_config.project_id}.{gs_config.dataset_name}.{gs_config.table_name}_pointer_state`;
+        GROUP BY 1
+        """
+        )
+
     for blob in blobs:
         match = goldsky_re.match(blob.name)
         if not match:
@@ -474,17 +497,6 @@ def testing_goldsky(
     gs_context = GoldskyContext(bigquery, gcs)
 
     job_id = arrow.now().format("YYYYMMDDHHmm")
-
-    gs_config = GoldskyConfig(
-        "opensource-observer",
-        "oso-dataset-transfer-bucket",
-        "oso_raw_sources",
-        "optimism_traces",
-        "block_number",
-        int(os.environ.get("GOLDSKY_BATCH_SIZE", "20")),
-        os.environ.get("DUCKDB_GCS_KEY_ID"),
-        os.environ.get("DUCKDB_GCS_SECRET"),
-    )
 
     pointer_table = f"{gs_config.project_id}.{gs_config.dataset_name}.{gs_config.table_name}_pointer_state"
 
