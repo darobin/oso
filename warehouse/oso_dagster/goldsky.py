@@ -85,7 +85,7 @@ class GoldskyDuckDB:
         conn = self.conn
         bucket_name = self.bucket_name
 
-        base = f"gs://{bucket_name}/"
+        base = f"gs://{bucket_name}"
 
         size = len(blob_names)
 
