@@ -302,7 +302,7 @@ def load_goldsky_worker(
         client.query_and_wait(
             f"""
             BEGIN
-                BEGIN TRANSACTION
+                BEGIN TRANSACTION;
                     LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{job_id}`
                     FROM FILES (
                         format = "PARQUET",
@@ -318,7 +318,7 @@ def load_goldsky_worker(
                     SELECT * FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{job_id}`;
 
                     INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, latest_checkpoint)
-                    VALUES ('{worker}', {last_checkpoint})
+                    VALUES ('{worker}', {last_checkpoint});
                     
                 COMMIT TRANSACTION
                 EXCEPTION WHEN ERROR THEN
