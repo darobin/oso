@@ -258,7 +258,8 @@ def load_goldsky_worker(
             context.log.info(f"Processing {item.blob_name}")
         last_checkpoint = item.checkpoint
 
-        batch_to_load.append(queue.dequeue())
+        item = queue.dequeue()
+        batch_to_load.append(item)
 
         if len(batch_to_load) > config.size:
             gs_duckdb.load_and_merge(
