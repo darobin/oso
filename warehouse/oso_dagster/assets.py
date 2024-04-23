@@ -193,7 +193,7 @@ class GoldskyQueue:
 
     def dequeue(self) -> GoldskyQueueItem | None:
         if self.enable_testing:
-            if self._dequeues > 10:
+            if self._dequeues > 5:
                 return None
         try:
             item = heapq.heappop(self.queue)
