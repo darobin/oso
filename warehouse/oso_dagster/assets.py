@@ -183,18 +183,17 @@ class GoldskyQueueItem:
 
 
 class GoldskyQueue:
-    def __init__(self, enable_testing: bool = False):
+    def __init__(self, max_size: int):
         self.queue = []
         self._dequeues = 0
-        self.enable_testing = enable_testing
+        self.max_size = max_size
 
     def enqueue(self, item: GoldskyQueueItem):
         heapq.heappush(self.queue, item)
 
     def dequeue(self) -> GoldskyQueueItem | None:
-        if self.enable_testing:
-            if self._dequeues > 5:
-                return None
+        if self._dequeues > self.max_size - 1:
+            return None
         try:
             item = heapq.heappop(self.queue)
             self._dequeues += 1
@@ -207,21 +206,17 @@ class GoldskyQueue:
 
 
 class GoldskyQueues:
-    def __init__(self, enable_testing: bool = False):
+    def __init__(self, max_size: int):
         self.queues: Mapping[str, GoldskyQueue] = {}
-        self.enable_testing = enable_testing
+        self.max_size = max_size
 
     def enqueue(self, worker: str, item: GoldskyQueueItem):
-        queue = self.queues.get(
-            worker, GoldskyQueue(enable_testing=self.enable_testing)
-        )
+        queue = self.queues.get(worker, GoldskyQueue(max_size=self.max_size))
         queue.enqueue(item)
         self.queues[worker] = queue
 
     def dequeue(self, worker: str) -> GoldskyQueueItem | None:
-        queue = self.queues.get(
-            worker, GoldskyQueue(enable_testing=self.enable_testing)
-        )
+        queue = self.queues.get(worker, GoldskyQueue(max_size=self.max_size))
         return queue.dequeue()
 
     def workers(self):
@@ -451,7 +446,7 @@ def testing_goldsky(
         "oso_raw_sources",
         "optimism_traces",
         "block_number",
-        int(os.environ.get("GOLDSKY_BATCH_SIZE", "20")),
+        int(os.environ.get("GOLDSKY_BATCH_SIZE", "40")),
         os.environ.get("DUCKDB_GCS_KEY_ID"),
         os.environ.get("DUCKDB_GCS_SECRET"),
     )
@@ -461,9 +456,7 @@ def testing_goldsky(
 
     parsed_files = []
     gs_job_ids = set()
-    queues = GoldskyQueues(
-        enable_testing=os.environ.get("GOLDSKY_ENABLE_TESTING") in ["True", "true"]
-    )
+    queues = GoldskyQueues(max_size=int(os.environ.get("GOLDSKY_MAX_QUEUE_SIZE", 5000)))
 
     worker_status: Mapping[str, int] = {}
     # Get the current state
