@@ -138,7 +138,7 @@ class GoldskyDuckDB:
                     f"""
                 DELETE FROM {merged_table} WHERE id IN (
                     SELECT m.id
-                    FROM merged AS m
+                    FROM {merged_table} AS m
                     INNER JOIN {checkpoint_table} AS ch
                     ON m.id = ch.id
                 );
