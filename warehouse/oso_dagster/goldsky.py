@@ -96,7 +96,7 @@ class GoldskyDuckDB:
         for i in range(size):
             self.log.info(f"Creating a view for blob {base}/{blob_names[i]}")
             file_ref = f"{base}/{blob_names[i]}"
-            checkpoint_view = f"checkpoint_{batch_id}_{i}"
+            checkpoint_view = f"checkpoint_{worker}_{batch_id}_{i}"
             conn.sql(
                 f"""
             CREATE OR REPLACE VIEW {checkpoint_view}
@@ -107,30 +107,19 @@ class GoldskyDuckDB:
             )
             checkpoint_views.append(checkpoint_view)
 
-        merged_table = f"merged_{batch_id}"
-        try:
-            conn.sql(
-                f"""
-            CREATE TABLE {merged_table}
-            AS
-            SELECT *
-            FROM checkpoint_{batch_id}_{i}
-            """
-            )
-        except duckdb.CatalogException:
-            conn.sql(f"DROP TABLE {merged_table};")
-            conn.sql(
-                f"""
-            CREATE TABLE {merged_table}
-            AS
-            SELECT *
-            FROM checkpoint_{batch_id}_0
-            """
-            )
+        merged_table = f"merged_{worker}_{batch_id}"
+        conn.sql(
+            f"""
+        CREATE TABLE OR REPLACE {merged_table}
+        AS
+        SELECT *
+        FROM checkpoint_{worker}_{batch_id}_0
+        """
+        )
 
         for i in range(size - 1):
             self.log.debug(f"Merging {blob_names[i+1]}")
-            checkpoint_table = f"checkpoint_{batch_id}_{i+1}"
+            checkpoint_table = checkpoint_views[i + 1]
             rows = conn.sql(
                 f"""
             SELECT *
@@ -140,6 +129,7 @@ class GoldskyDuckDB:
             """
             )
             if len(rows) > 0:
+                self.log.debug(f"removing some duplicates from {blob_names[i]}")
                 conn.sql(
                     f"""
                 DELETE FROM {merged_table} WHERE id IN (
@@ -164,7 +154,7 @@ class GoldskyDuckDB:
         # Create a table to store the ids for this
         conn.sql(
             f"""
-        CREATE TABLE merged_ids_{batch_id}
+        CREATE TABLE OR REPLACE merged_ids_{worker}_{batch_id}
         AS
         SELECT id as "id" FROM {merged_table}
         """
@@ -175,27 +165,27 @@ class GoldskyDuckDB:
             # Check for any intersections with the last table. We need to create a "delete patch"
             conn.sql(
                 f"""
-            CREATE TABLE delete_patch_{prev_batch_id}
+            CREATE TABLE OR REPLACE delete_patch_{worker}_{prev_batch_id}
             AS
             SELECT pmi.id 
-            FROM merged_ids_{prev_batch_id} AS pmi
+            FROM merged_ids_{worker}_{prev_batch_id} AS pmi
             INNER JOIN {merged_table} AS m
                 ON m.id = pmi.id;
             """
             )
             conn.sql(
                 f"""
-            DROP TABLE merged_ids_{prev_batch_id};
+            DROP TABLE merged_ids_{worker}_{prev_batch_id};
             """
             )
             conn.sql(
                 f"""
-            COPY delete_patch_{prev_batch_id} TO '{self.full_dest_delete_path(worker, prev_batch_id)}';
+            COPY delete_patch_{worker}_{prev_batch_id} TO '{self.full_dest_delete_path(worker, prev_batch_id)}';
             """
             )
             conn.sql(
                 f"""
-            DROP TABLE delete_patch_{prev_batch_id};
+            DROP TABLE delete_patch_{worker}_{prev_batch_id};
             """
             )
         conn.sql(
@@ -218,135 +208,135 @@ class GoldskyDuckDB:
                 )
 
 
-def load_and_merge(
-    log: DagsterLogManager,
-    conn: duckdb.DuckDBPyConnection,
-    bucket_name: str,
-    blob_names: List[str],
-    batch_id: int,
-    key_id: str,
-    secret: str,
-    destination_path: str,
-):
-    conn.sql(
-        f"""
-    CREATE SECRET (
-        TYPE GCS,
-        KEY_ID '{key_id}',
-        SECRET '{secret}'
-    );
-    """
-    )
+# def load_and_merge(
+#     log: DagsterLogManager,
+#     conn: duckdb.DuckDBPyConnection,
+#     bucket_name: str,
+#     blob_names: List[str],
+#     batch_id: int,
+#     key_id: str,
+#     secret: str,
+#     destination_path: str,
+# ):
+#     conn.sql(
+#         f"""
+#     CREATE SECRET (
+#         TYPE GCS,
+#         KEY_ID '{key_id}',
+#         SECRET '{secret}'
+#     );
+#     """
+#     )
 
-    base = f"gs://{bucket_name}/"
+#     base = f"gs://{bucket_name}/"
 
-    size = len(blob_names)
+#     size = len(blob_names)
 
-    for i in range(size):
-        log.debug(f"Blob {blob_names[i]}")
-        file_ref = f"{base}/{blob_names[i]}"
-        conn.sql(
-            f"""
-        CREATE OR REPLACE VIEW checkpoint_{batch_id}_{i}
-        AS
-        SELECT *
-        FROM read_parquet('{file_ref}');
-        """
-        )
+#     for i in range(size):
+#         log.debug(f"Blob {blob_names[i]}")
+#         file_ref = f"{base}/{blob_names[i]}"
+#         conn.sql(
+#             f"""
+#         CREATE OR REPLACE VIEW checkpoint_{batch_id}_{i}
+#         AS
+#         SELECT *
+#         FROM read_parquet('{file_ref}');
+#         """
+#         )
 
-    merged_table = f"merged_{batch_id}"
-    try:
-        conn.sql(
-            f"""
-        CREATE TABLE {merged_table}
-        AS
-        SELECT *
-        FROM checkpoint_{batch_id}_{i}
-        """
-        )
-    except duckdb.CatalogException:
-        conn.sql(f"DROP TABLE {merged_table};")
-        conn.sql(
-            f"""
-        CREATE TABLE {merged_table}
-        AS
-        SELECT *
-        FROM checkpoint_{batch_id}_0
-        """
-        )
+#     merged_table = f"merged_{batch_id}"
+#     try:
+#         conn.sql(
+#             f"""
+#         CREATE TABLE {merged_table}
+#         AS
+#         SELECT *
+#         FROM checkpoint_{batch_id}_{i}
+#         """
+#         )
+#     except duckdb.CatalogException:
+#         conn.sql(f"DROP TABLE {merged_table};")
+#         conn.sql(
+#             f"""
+#         CREATE TABLE {merged_table}
+#         AS
+#         SELECT *
+#         FROM checkpoint_{batch_id}_0
+#         """
+#         )
 
-    for i in range(size - 1):
-        log.info(f"Merging {blob_names[i+1]}")
-        checkpoint_table = f"checkpoint_{batch_id}_{i+1}"
-        rows = conn.sql(
-            f"""
-        SELECT *
-        FROM {merged_table} AS m
-        INNER JOIN {checkpoint_table} as ch
-          ON m.id = ch.id;
-        """
-        )
-        if len(rows) > 0:
-            conn.sql(
-                f"""
-            DELETE FROM {merged_table} WHERE id in (
-                SELECT m.id
-                FROM merged AS m
-                INNER JOIN {checkpoint_table} AS ch
-                  ON m.id = ch.id
-            );
-            """
-            )
-        conn.sql(
-            f"""
-        INSERT INTO {merged_table}
-        SELECT * FROM {checkpoint_table};
-        """
-        )
-    conn.sql(
-        f"""
-    COPY {merged_table} TO 'gs://{bucket_name}/{destination_path}/table_{batch_id}.parquet';
-    """
-    )
-    # Create a table to store the ids for this
-    conn.sql(
-        f"""
-    CREATE TABLE merged_ids_{batch_id}
-    AS
-    SELECT id as "id" FROM {merged_table}
-    """
-    )
+#     for i in range(size - 1):
+#         log.info(f"Merging {blob_names[i+1]}")
+#         checkpoint_table = f"checkpoint_{batch_id}_{i+1}"
+#         rows = conn.sql(
+#             f"""
+#         SELECT *
+#         FROM {merged_table} AS m
+#         INNER JOIN {checkpoint_table} as ch
+#           ON m.id = ch.id;
+#         """
+#         )
+#         if len(rows) > 0:
+#             conn.sql(
+#                 f"""
+#             DELETE FROM {merged_table} WHERE id in (
+#                 SELECT m.id
+#                 FROM merged AS m
+#                 INNER JOIN {checkpoint_table} AS ch
+#                   ON m.id = ch.id
+#             );
+#             """
+#             )
+#         conn.sql(
+#             f"""
+#         INSERT INTO {merged_table}
+#         SELECT * FROM {checkpoint_table};
+#         """
+#         )
+#     conn.sql(
+#         f"""
+#     COPY {merged_table} TO 'gs://{bucket_name}/{destination_path}/table_{batch_id}.parquet';
+#     """
+#     )
+#     # Create a table to store the ids for this
+#     conn.sql(
+#         f"""
+#     CREATE TABLE OR REPLACE merged_ids_{batch_id}
+#     AS
+#     SELECT id as "id" FROM {merged_table}
+#     """
+#     )
 
-    if batch_id > 0:
-        prev_batch_id = batch_id - 1
-        # Check for any intersections with the last table. We need to create a "delete patch"
-        conn.sql(
-            f"""
-        CREATE TABLE delete_patch_{prev_batch_id}
-        AS
-        SELECT pmi.id 
-        FROM merged_ids_{prev_batch_id} AS pmi
-        INNER JOIN {merged_table} AS m
-            ON m.id = pmi.id;
-        """
-        )
-        conn.sql(
-            f"""
-        DROP TABLE merged_ids_{prev_batch_id};
-        """
-        )
-        conn.sql(
-            f"""
-        COPY delete_patch_{prev_batch_id} TO 'gs://{bucket_name}/{destination_path}/delete_{prev_batch_id}.parquet';
-        """
-        )
-        conn.sql(
-            f"""
-        DROP TABLE delete_patch_{prev_batch_id};
-        """
-        )
-    conn.sql(
-        f"""
-    DROP TABLE {merged_table};
-    """
-    )
+#     if batch_id > 0:
+#         prev_batch_id = batch_id - 1
+#         # Check for any intersections with the last table. We need to create a "delete patch"
+#         conn.sql(
+#             f"""
+#         CREATE TABLE OR REPLACE delete_patch_{prev_batch_id}
+#         AS
+#         SELECT pmi.id
+#         FROM merged_ids_{prev_batch_id} AS pmi
+#         INNER JOIN {merged_table} AS m
+#             ON m.id = pmi.id;
+#         """
+#         )
+#         conn.sql(
+#             f"""
+#         DROP TABLE merged_ids_{prev_batch_id};
+#         """
+#         )
+#         conn.sql(
+#             f"""
+#         COPY delete_patch_{prev_batch_id} TO 'gs://{bucket_name}/{destination_path}/delete_{prev_batch_id}.parquet';
+#         """
+#         )
+#         conn.sql(
+#             f"""
+#         DROP TABLE delete_patch_{prev_batch_id};
+#         """
+#         )
+#     conn.sql(
+#         f"""
+#     DROP TABLE {merged_table};
+#     """
+#     )
