@@ -14,6 +14,7 @@ class GoldskyDuckDB:
         secret: str,
         path: str,
         log: DagsterLogManager,
+        memory_limit: str = "10GB",
     ):
         conn = duckdb.connect(path)
         conn.sql(
@@ -25,6 +26,7 @@ class GoldskyDuckDB:
         );
         """
         )
+        conn.sql(f"SET memory_limit = '{memory_limit}';")
         return cls(bucket_name, destination_path, log, conn)
 
     def __init__(
@@ -52,12 +54,11 @@ class GoldskyDuckDB:
         return f"gs://{self.bucket_name}/{self.destination_path}/{worker}/deduped_*.parquet"
 
     def remove_dupes(self, worker: str, batches: List[int]):
-        conn = self.conn
-        bucket_name = self.bucket_name
-
-        base = f"gs://{bucket_name}"
+        for batch_id in batches:
+            self.remove_dupe_for_batch(worker, batch_id)
 
     def remove_dupe_for_batch(self, worker: str, batch_id: int):
+        self.log.info(f"removing duplicates for batch {batch_id}")
         self.conn.sql(
             f"""
         CREATE TABLE deduped_{batch_id}
@@ -200,6 +201,7 @@ class GoldskyDuckDB:
         DROP TABLE {merged_table};
         """
         )
+        self.log.info(f"Completed load and merge {batch_id}")
         for checkpoint_view in checkpoint_views:
             try:
                 conn.sql(
