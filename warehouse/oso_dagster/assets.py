@@ -489,7 +489,7 @@ def testing_goldsky(
         worker = match.group("worker")
         gs_job_ids.add(match.group("job_id"))
         checkpoint = int(match.group("checkpoint"))
-        if checkpoint < worker_status[worker]:
+        if checkpoint < worker_status.get(worker, -1):
             context.log.debug(f"skipping {blob.name} as it was already processed")
             continue
         queues.enqueue(
