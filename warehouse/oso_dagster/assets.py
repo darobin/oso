@@ -252,8 +252,11 @@ def load_goldsky_worker(
     queue: GoldskyQueue,
 ):
     item = queue.dequeue()
+    if not item:
+        context.log.info(f"nothing to load for worker {worker}")
+        return
     last_checkpoint = item.checkpoint - 1
-    batch_to_load: List[str] = []
+    batch_to_load: List[str] = [item]
     batches: List[int] = []
     current_batch = 0
     while item:
