@@ -271,6 +271,8 @@ def load_goldsky_worker(
         last_checkpoint = item.checkpoint
 
         item = queue.dequeue()
+        if not item:
+            break
         batch_to_load.append(item.blob_name)
 
         if len(batch_to_load) > config.size:
