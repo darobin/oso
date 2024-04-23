@@ -437,7 +437,7 @@ def load_goldsky_queue_item(
         )
 
 
-@asset
+@asset(key="optimism_traces")
 def testing_goldsky(
     context: AssetExecutionContext, bigquery: BigQueryResource, gcs: GCSResource
 ) -> MaterializeResult:
