@@ -183,15 +183,22 @@ class GoldskyQueueItem:
 
 
 class GoldskyQueue:
-    def __init__(self):
+    def __init__(self, enable_testing: bool = False):
         self.queue = []
+        self._dequeues = 0
+        self.enable_testing = enable_testing
 
     def enqueue(self, item: GoldskyQueueItem):
         heapq.heappush(self.queue, item)
 
     def dequeue(self) -> GoldskyQueueItem | None:
+        if self.enable_testing:
+            if self._dequeues > 10:
+                return None
         try:
-            return heapq.heappop(self.queue)
+            item = heapq.heappop(self.queue)
+            self._dequeues += 1
+            return item
         except IndexError:
             return None
 
@@ -426,7 +433,7 @@ def testing_goldsky(
         "oso_raw_sources",
         "optimism_traces",
         "block_number",
-        100,
+        int(os.environ.get("GOLDSKY_BATCH_SIZE", "10")),
         os.environ.get("DUCKDB_GCS_KEY_ID"),
         os.environ.get("DUCKDB_GCS_SECRET"),
     )
