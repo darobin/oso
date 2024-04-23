@@ -14,7 +14,7 @@ class GoldskyDuckDB:
         secret: str,
         path: str,
         log: DagsterLogManager,
-        memory_limit: str = "10GB",
+        memory_limit: str = "16GB",
     ):
         conn = duckdb.connect(path)
         conn.sql(
@@ -54,10 +54,11 @@ class GoldskyDuckDB:
         return f"gs://{self.bucket_name}/{self.destination_path}/{worker}/deduped_*.parquet"
 
     def remove_dupes(self, worker: str, batches: List[int]):
-        for batch_id in batches:
+        for batch_id in batches[:-1]:
             self.remove_dupe_for_batch(worker, batch_id)
+        self.remove_dupe_for_batch(worker, batches[-1], last=True)
 
-    def remove_dupe_for_batch(self, worker: str, batch_id: int):
+    def remove_dupe_for_batch(self, worker: str, batch_id: int, last: bool = False):
         self.log.info(f"removing duplicates for batch {batch_id}")
         self.conn.sql(
             f"""
@@ -67,14 +68,15 @@ class GoldskyDuckDB:
         """
         )
 
-        self.conn.sql(
-            f""" 
-        DELETE FROM deduped_{batch_id}
-        WHERE id in (
-            SELECT id FROM read_parquest('{self.full_dest_delete_path(worker, batch_id)}')
-        )
-        """
-        )
+        if not last:
+            self.conn.sql(
+                f""" 
+            DELETE FROM deduped_{batch_id}
+            WHERE id in (
+                SELECT id FROM read_parquest('{self.full_dest_delete_path(worker, batch_id)}')
+            )
+            """
+            )
 
         self.conn.sql(
             f"""
