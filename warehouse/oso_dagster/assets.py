@@ -207,16 +207,21 @@ class GoldskyQueue:
 
 
 class GoldskyQueues:
-    def __init__(self):
+    def __init__(self, enable_testing: bool = False):
         self.queues: Mapping[str, GoldskyQueue] = {}
+        self.enable_testing = enable_testing
 
     def enqueue(self, worker: str, item: GoldskyQueueItem):
-        queue = self.queues.get(worker, GoldskyQueue())
+        queue = self.queues.get(
+            worker, GoldskyQueue(enable_testing=self.enable_testing)
+        )
         queue.enqueue(item)
         self.queues[worker] = queue
 
     def dequeue(self, worker: str) -> GoldskyQueueItem | None:
-        queue = self.queues.get(worker, GoldskyQueue())
+        queue = self.queues.get(
+            worker, GoldskyQueue(enable_testing=self.enable_testing)
+        )
         return queue.dequeue()
 
     def workers(self):
@@ -402,7 +407,9 @@ def testing_goldsky(
 
     parsed_files = []
     gs_job_ids = set()
-    queues = GoldskyQueues()
+    queues = GoldskyQueues(
+        enable_testing=os.environ.get("GOLDSKY_ENABLE_TESTING") in ["True", "true"]
+    )
     for blob in blobs:
         match = goldsky_re.match(blob.name)
         if not match:
