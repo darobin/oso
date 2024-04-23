@@ -4,7 +4,7 @@ import arrow
 import heapq
 import duckdb
 import uuid
-from typing import Any, Mapping, List
+from typing import Any, Mapping, List, Optional
 from enum import Enum
 from pathlib import Path
 from google.api_core.exceptions import BadRequest, NotFound
@@ -250,6 +250,7 @@ def load_goldsky_worker(
     gs_duckdb: GoldskyDuckDB,
     worker: str,
     queue: GoldskyQueue,
+    last_checkpoint_from_previous_run: Optional[int] = None,
 ):
     item = queue.dequeue()
     if not item:
@@ -305,24 +306,29 @@ def load_goldsky_worker(
         dest_table_ref = client.get_dataset(config.dataset_name).table(
             f"{config.table_name}_{worker}"
         )
-        new = False
+        new = last_checkpoint_from_previous_run is None
         try:
             client.get_table(dest_table_ref)
         except NotFound as exc:
+            if last_checkpoint_from_previous_run is not None:
+                raise exc
             new = True
 
         if not new:
             context.log.info("Merging into worker table")
             client.query_and_wait(
                 f"""
+                LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
+                FROM FILES (
+                    format = "PARQUET",
+                    uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
+                );
+            """
+            )
+            client.query_and_wait(
+                f"""
                 BEGIN
-                    BEGIN TRANSACTION;
-                        LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
-                        FROM FILES (
-                            format = "PARQUET",
-                            uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
-                        );
-                        
+                    BEGIN TRANSACTION; 
                         DELETE FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}` 
                         WHERE id IN (
                             SELECT id FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
@@ -332,10 +338,7 @@ def load_goldsky_worker(
                         SELECT * FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`;
 
                         INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, latest_checkpoint)
-                        VALUES ('{worker}', {last_checkpoint});
-
-                        DROP TABLE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`;
-                        
+                        VALUES ('{worker}', {last_checkpoint}); 
                     COMMIT TRANSACTION;
                     EXCEPTION WHEN ERROR THEN
                     -- Roll back the transaction inside the exception handler.
@@ -344,10 +347,15 @@ def load_goldsky_worker(
                 END;
             """
             )
+            client.query_and_wait(
+                f"""
+                DROP TABLE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`;
+            """
+            )
         else:
             context.log.info("Creating new worker table")
             query1 = f"""
-                LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
+                LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}`
                 FROM FILES (
                     format = "PARQUET",
                     uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
@@ -357,19 +365,8 @@ def load_goldsky_worker(
             client.query_and_wait(query1)
             rows = client.query_and_wait(
                 f"""
-                BEGIN
-                    BEGIN TRANSACTION; 
-                        ALTER TABLE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
-                        RENAME TO {config.table_name}_{worker};
-
-                        INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, latest_checkpoint)
-                        VALUES ('{worker}', {last_checkpoint});
-                    COMMIT TRANSACTION;
-                    EXCEPTION WHEN ERROR THEN
-                    -- Roll back the transaction inside the exception handler.
-                    SELECT @@error.message;
-                    ROLLBACK TRANSACTION;
-                END;
+                INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_pointer_state` (worker, latest_checkpoint)
+                VALUES ('{worker}', {last_checkpoint});
             """
             )
             context.log.info(rows)
@@ -468,7 +465,7 @@ def testing_goldsky(
         enable_testing=os.environ.get("GOLDSKY_ENABLE_TESTING") in ["True", "true"]
     )
 
-    worker_status = {}
+    worker_status: Mapping[str, int] = {}
     # Get the current state
     with bigquery.get_client() as client:
         rows = client.query_and_wait(
@@ -478,6 +475,8 @@ def testing_goldsky(
         GROUP BY 1;
         """
         )
+        for row in rows:
+            worker_status[row.worker] = row.last_checkpoint
 
     for blob in blobs:
         match = goldsky_re.match(blob.name)
@@ -535,7 +534,14 @@ def testing_goldsky(
     for worker, queue in queues.worker_queues():
         context.log.info(f"Loading for worker {worker}")
         load_goldsky_worker(
-            job_id, context, gs_config, gs_context, gs_duckdb, worker, queue
+            job_id,
+            context,
+            gs_config,
+            gs_context,
+            gs_duckdb,
+            worker,
+            queue,
+            last_checkpoint_from_previous_run=worker_status.get(worker, None),
         )
 
     # Create a temporary table to load the current checkpoint
