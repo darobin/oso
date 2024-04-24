@@ -367,6 +367,9 @@ class MPGoldskyDuckDB:
         """
 
         print(query)
+        import time
+
+        time.sleep(10)
         conn.sql(query)
 
         print(f"Completed load {blob_name}")
