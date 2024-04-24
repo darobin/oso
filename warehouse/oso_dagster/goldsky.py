@@ -102,7 +102,7 @@ class GoldskyDuckDB:
         log: DagsterLogManager,
         memory_limit: str = "16GB",
     ):
-        conn = duckdb.connect(path)
+        conn = duckdb.connect()
         conn.sql(
             f"""
         CREATE SECRET (
