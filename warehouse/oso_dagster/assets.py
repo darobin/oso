@@ -40,7 +40,6 @@ from .goldsky import (
     GoldskyDuckDB,
     GoldskyQueueItem,
     GoldskyConfig,
-    GoldskyAsset,
     GoldskyContext,
     GoldskyQueue,
     GoldskyQueues,
@@ -196,9 +195,6 @@ def load_goldsky_worker(
         current_batch += 1
         batch_to_load = []
 
-    # Reprocess each of the batches and delete using the deletion tables
-    gs_duckdb.remove_dupes(worker, batches)
-
     # Load all of the tables into bigquery
     with gs_context.bigquery.get_client() as client:
         dest_table_ref = client.get_dataset(config.dataset_name).table(
@@ -219,18 +215,13 @@ def load_goldsky_worker(
                 LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
                 FROM FILES (
                     format = "PARQUET",
-                    uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
+                    uris = ["{gs_duckdb.wildcard_path(worker)}"]
                 );
             """
             )
             tx_query = f"""
                 BEGIN
                     BEGIN TRANSACTION; 
-                        DELETE FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}` 
-                        WHERE id IN (
-                            SELECT id FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
-                        );
-
                         INSERT INTO `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}` 
                         SELECT * FROM `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`;
 
@@ -256,7 +247,7 @@ def load_goldsky_worker(
                 LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}`
                 FROM FILES (
                     format = "PARQUET",
-                    uris = ["{gs_duckdb.wildcard_deduped_path(worker)}"]
+                    uris = ["{gs_duckdb.wildcard_path(worker)}"]
                 );
             """
             context.log.debug(f"query: {query1}")

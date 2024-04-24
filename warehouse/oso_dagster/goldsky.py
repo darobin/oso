@@ -7,11 +7,6 @@ from .common import GenericGCSAsset
 from dagster_gcp import BigQueryResource, GCSResource
 
 
-class GoldskyAsset(GenericGCSAsset):
-    def clean_up(self):
-        pass
-
-
 @dataclass
 class GoldskyConfig:
     project_id: str
@@ -140,8 +135,10 @@ class GoldskyDuckDB:
     def full_dest_deduped_path(self, worker: str, batch_id: int):
         return f"gs://{self.bucket_name}/{self.destination_path}/{worker}/deduped_{batch_id}.parquet"
 
-    def wildcard_deduped_path(self, worker: str):
-        return f"gs://{self.bucket_name}/{self.destination_path}/{worker}/deduped_*.parquet"
+    def wildcard_path(self, worker: str):
+        return (
+            f"gs://{self.bucket_name}/{self.destination_path}/{worker}/table_*.parquet"
+        )
 
     def remove_dupes(self, worker: str, batches: List[int]):
         for batch_id in batches[:-1]:
@@ -174,13 +171,15 @@ class GoldskyDuckDB:
         """
         )
 
-    def load_and_merge(self, worker: str, batch_id: int, blob_names: List[str]):
+    def load_and_merge(
+        self, worker: str, batch_id: int, batch_items: List[GoldskyQueueItem]
+    ):
         conn = self.conn
         bucket_name = self.bucket_name
 
         base = f"gs://{bucket_name}"
 
-        size = len(blob_names)
+        size = len(batch_items)
 
         merged_table = f"merged_{worker}_{batch_id}"
 
@@ -189,33 +188,20 @@ class GoldskyDuckDB:
             f"""
         CREATE TEMP TABLE {merged_table}
         AS
-        SELECT DISTINCT ON (id) *
-        FROM read_parquet('{base}/{blob_names[-1]}')
+        SELECT {batch_items[0].checkpoint} AS _checkpoint, *
+        FROM read_parquet('{base}/{batch_items[-1]}')
         """
         )
 
-        merge_index = f"merging_unique_{worker}_{batch_id}"
-
-        # Create a unique constraint on the id field
-        conn.sql(
-            f"""
-        CREATE UNIQUE INDEX {merge_index} ON {merged_table} (id);
-        """
-        )
-
-        reverse_blobs = blob_names[:-1]
-        reverse_blobs.reverse()
-
-        for blob_name in reverse_blobs:
-            self.log.info(f"Creating a view for blob {base}/{blob_name}")
-            file_ref = f"{base}/{blob_name}"
+        for batch_item in batch_items:
+            self.log.info(f"Inserting all items in {base}/{batch_item}")
+            file_ref = f"{base}/{batch_item}"
             # TO DO CHECK FOR DUPES IN THE SAME CHECKPOINT
             conn.sql(
                 f"""
             INSERT INTO {merged_table}
-            SELECT DISTINCT ON (id) *
+            SELECT {batch_item.checkpoint} AS _checkpoint, *
             FROM read_parquet('{file_ref}')
-            ON CONFLICT (id) DO NOTHING;
             """
             )
 
@@ -224,43 +210,7 @@ class GoldskyDuckDB:
         COPY {merged_table} TO '{self.full_dest_table_path(worker, batch_id)}';
         """
         )
-        # Create a table to store the ids for this
-        conn.sql(
-            f"""
-        CREATE OR REPLACE TABLE merged_ids_{worker}_{batch_id}
-        AS
-        SELECT id as "id" FROM {merged_table}
-        """
-        )
 
-        if batch_id > 0:
-            prev_batch_id = batch_id - 1
-            # Check for any intersections with the last table. We need to create a "delete patch"
-            conn.sql(
-                f"""
-            CREATE OR REPLACE TABLE delete_patch_{worker}_{prev_batch_id}
-            AS
-            SELECT pmi.id 
-            FROM merged_ids_{worker}_{prev_batch_id} AS pmi
-            INNER JOIN {merged_table} AS m
-                ON m.id = pmi.id;
-            """
-            )
-            conn.sql(
-                f"""
-            DROP TABLE merged_ids_{worker}_{prev_batch_id};
-            """
-            )
-            conn.sql(
-                f"""
-            COPY delete_patch_{worker}_{prev_batch_id} TO '{self.full_dest_delete_path(worker, prev_batch_id)}';
-            """
-            )
-            conn.sql(
-                f"""
-            DROP TABLE delete_patch_{worker}_{prev_batch_id};
-            """
-            )
         conn.sql(
             f"""
         DROP TABLE {merged_table};
