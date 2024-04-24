@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import ProcessPoolExecutor
 from queue import Empty
 import multiprocessing as mp
 from dataclasses import dataclass
@@ -401,10 +402,12 @@ async def mp_load_goldsky_worker(
     last_checkpoint = item.checkpoint - 1
     destination_path = (f"_temp/{job_id}",)
 
-    coroutines = []
+    futures = []
 
     # Create the pool
-    with mp.Pool(initializer=mp_init, initargs=(destination_path, config)) as pool:
+    with ProcessPoolExecutor(
+        initializer=mp_init, initargs=(destination_path, config)
+    ) as executor:
         while item:
             if item.checkpoint > last_checkpoint:
                 if item.checkpoint - 1 != last_checkpoint:
@@ -422,20 +425,21 @@ async def mp_load_goldsky_worker(
             item = queue.dequeue()
             if not item:
                 break
-            coroutines.append(
-                pool.apply_async(
-                    mp_run_load,
-                    args=(
-                        MPWorkerItem(
-                            worker=worker,
-                            blob_name=item.blob_name,
-                            checkpoint=item.checkpoint,
-                        )
-                    ),
+            futures.append(
+                asyncio.wrap_future(
+                    executor.submit(
+                        mp_run_load,
+                        args=(
+                            MPWorkerItem(
+                                worker=worker,
+                                blob_name=item.blob_name,
+                                checkpoint=item.checkpoint,
+                            )
+                        ),
+                    )
                 )
             )
-
-    await asyncio.gather(*coroutines)
+        await asyncio.gather(*futures)
 
     # Load all of the tables into bigquery
     with gs_context.bigquery.get_client() as client:
