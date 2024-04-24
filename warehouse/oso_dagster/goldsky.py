@@ -189,7 +189,7 @@ class GoldskyDuckDB:
             f"""
         CREATE TEMP TABLE {merged_table}
         AS
-        SELECT *
+        SELECT DISTINCT ON (id) *
         FROM read_parquet('{base}/{blob_names[-1]}')
         """
         )

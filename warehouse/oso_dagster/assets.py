@@ -1,9 +1,7 @@
 import os
 import re
 import arrow
-import heapq
-import duckdb
-import uuid
+import asyncio
 from typing import Any, Mapping, List, Optional
 from enum import Enum
 from pathlib import Path
@@ -620,6 +618,19 @@ def interval_gcs_import_asset(key: str, config: IntervalGCSAsset, **kwargs):
         )
 
     return AssetFactoryResponse([gcs_asset], [gcs_clean_up_sensor], [gcs_clean_up_job])
+
+
+async def sleep_and_print(msg: str, sleep: float):
+    asyncio.sleep(sleep)
+    print(msg)
+
+
+@asset
+async def async_asset() -> MaterializeResult:
+    m1 = sleep_and_print("message 1", 5)
+    m2 = sleep_and_print("message 2", 1)
+    await asyncio.gather(m1, m2)
+    return MaterializeResult(metadata={"boop": True})
 
 
 karma3_globaltrust = interval_gcs_import_asset(
