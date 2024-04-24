@@ -316,17 +316,19 @@ async def testing_goldsky(
     worker_status: Mapping[str, int] = {}
     # Get the current state
     with bigquery.get_client() as client:
-        rows = client.query_and_wait(
-            f"""
-        SELECT worker, MAX(last_checkpoint) AS last_checkpoint
-        FROM `{gs_config.project_id}.{gs_config.dataset_name}.{gs_config.table_name}_pointer_state`
-        GROUP BY 1;
-        """
-        )
-        for row in rows:
-            print(row)
-            context.log.debug(row)
-            worker_status[row.worker] = row.last_checkpoint
+        try:
+            rows = client.query_and_wait(
+                f"""
+            SELECT worker, MAX(last_checkpoint) AS last_checkpoint
+            FROM `{gs_config.project_id}.{gs_config.dataset_name}.{gs_config.table_name}_pointer_state`
+            GROUP BY 1;
+            """
+            )
+            for row in rows:
+                context.log.debug(row)
+                worker_status[row.worker] = row.last_checkpoint
+        except NotFound:
+            context.log.info("No pointer status found. Will create the table later")
 
     for blob in blobs:
         match = goldsky_re.match(blob.name)
