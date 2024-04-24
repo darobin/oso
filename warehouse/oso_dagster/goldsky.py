@@ -182,60 +182,41 @@ class GoldskyDuckDB:
 
         size = len(blob_names)
 
-        checkpoint_temp_tables: List[str] = []
-        for i in range(size - 1):
-            self.log.info(f"Creating a view for blob {base}/{blob_names[i]}")
-            file_ref = f"{base}/{blob_names[i]}"
-            checkpoint_temp_table = f"checkpoint_{worker}_{batch_id}_{i}"
-            conn.sql(
-                f"""
-            CREATE TEMP TABLE {checkpoint_temp_table}
-            AS
-            SELECT {i} AS _oso_checkpoint_order, *
-            FROM read_parquet('{file_ref}');
-            """
-            )
-            checkpoint_temp_tables.append(checkpoint_temp_table)
-
         merged_table = f"merged_{worker}_{batch_id}"
+
+        # Start in reverse order and insert into the table
         conn.sql(
             f"""
-        CREATE OR REPLACE TABLE {merged_table}
+        CREATE TEMP TABLE {merged_table}
         AS
         SELECT *
-        FROM checkpoint_{worker}_{batch_id}_0
+        FROM read_parquet('{blob_names[-1]}')
         """
         )
 
-        for i in range(size - 1):
-            self.log.debug(f"Merging {blob_names[i+1]}")
-            checkpoint_table = checkpoint_temp_tables[i + 1]
-            rows = conn.sql(
-                f"""
-            SELECT *
-            FROM {merged_table} AS m
-            INNER JOIN {checkpoint_table} as ch
-            ON m.id = ch.id;
-            """
-            )
-            if len(rows) > 0:
-                self.log.debug(f"removing some duplicates from {blob_names[i]}")
-                conn.sql(
-                    f"""
-                DELETE FROM {merged_table} WHERE id IN (
-                    SELECT m.id
-                    FROM {merged_table} AS m
-                    INNER JOIN {checkpoint_table} AS ch
-                    ON m.id = ch.id
-                );
-                """
-                )
+        # Create a unique constraint on the id field
+        conn.sql(
+            f"""
+        CREATE UNIQUE INDEX merging_unique ON {merged_table} (id);
+        """
+        )
+
+        reverse_blobs = blob_names[:-1]
+        reverse_blobs.reverse()
+
+        for blob_name in reverse_blobs:
+            self.log.info(f"Creating a view for blob {base}/{blob_name}")
+            file_ref = f"{base}/{blob_name}"
             conn.sql(
                 f"""
             INSERT INTO {merged_table}
-            SELECT * FROM {checkpoint_table};
+            AS
+            SELECT *
+            FROM read_parquet('{file_ref}')
+            ON CONFLICT DO NOTHING;
             """
             )
+
         conn.sql(
             f"""
         COPY {merged_table} TO '{self.full_dest_table_path(worker, batch_id)}';
@@ -284,15 +265,3 @@ class GoldskyDuckDB:
         """
         )
         self.log.info(f"Completed load and merge {batch_id}")
-        for checkpoint_temp_table in checkpoint_temp_tables:
-            try:
-                conn.sql(
-                    f"""
-                DROP TABLE {checkpoint_temp_table}
-                """
-                )
-            except:
-                # Ignore view dropping errors
-                self.log.warn(
-                    f"error occured dropping checkpoint temp table: {checkpoint_temp_table}"
-                )
