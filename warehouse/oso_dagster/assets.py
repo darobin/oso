@@ -43,6 +43,7 @@ from .goldsky import (
     GoldskyContext,
     GoldskyQueue,
     GoldskyQueues,
+    mp_load_goldsky_worker,
 )
 
 
@@ -138,7 +139,7 @@ def parse_interval_prefix(interval: Interval, prefix: str) -> arrow.Arrow:
     return arrow.get(prefix, "YYYYMMDD")
 
 
-def load_goldsky_worker(
+async def load_goldsky_worker(
     job_id: str,
     context: AssetExecutionContext,
     config: GoldskyConfig,
@@ -375,15 +376,15 @@ async def testing_goldsky(
             else:
                 raise exc
 
-    gs_duckdb = GoldskyDuckDB.connect(
-        f"_temp/{job_id}",
-        gs_config.bucket_name,
-        gs_config.bucket_key_id,
-        gs_config.bucket_secret,
-        os.environ.get("DAGSTER_DUCKDB_PATH"),
-        context.log,
-        os.environ.get("DUCKDB_MEMORY_LIMIT", "16GB"),
-    )
+    # gs_duckdb = GoldskyDuckDB.connect(
+    #     f"_temp/{job_id}",
+    #     gs_config.bucket_name,
+    #     gs_config.bucket_key_id,
+    #     gs_config.bucket_secret,
+    #     os.environ.get("DAGSTER_DUCKDB_PATH"),
+    #     context.log,
+    #     os.environ.get("DUCKDB_MEMORY_LIMIT", "16GB"),
+    # )
 
     worker_coroutines = []
 
@@ -391,12 +392,11 @@ async def testing_goldsky(
     for worker, queue in queues.worker_queues():
         context.log.info(f"Creating coroutines for worker {worker}")
         worker_coroutines.append(
-            load_goldsky_worker(
+            mp_load_goldsky_worker(
                 job_id,
                 context,
                 gs_config,
                 gs_context,
-                gs_duckdb,
                 worker,
                 queue,
                 last_checkpoint_from_previous_run=worker_status.get(worker, None),
@@ -586,11 +586,22 @@ async def sleep_and_print(msg: str, sleep: float):
     print(msg)
 
 
+def mp_test():
+    print("hi from multiproc")
+
+
 @asset
 async def async_asset() -> MaterializeResult:
+    import multiprocessing
+
     m1 = sleep_and_print("message 1", 5)
     m2 = sleep_and_print("message 2", 1)
     await asyncio.gather(m1, m2)
+
+    p = multiprocessing.Process(target=mp_test)
+    p.start()
+    p.join()
+
     return MaterializeResult(metadata={"boop": True})
 
 
