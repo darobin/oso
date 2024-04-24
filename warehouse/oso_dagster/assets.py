@@ -1,5 +1,6 @@
 from concurrent.futures import ProcessPoolExecutor
 import os
+import uuid
 import re
 import arrow
 import asyncio
@@ -592,19 +593,22 @@ class Boop:
     bar: str
 
 
+official_name = None
+
+
 def mp_test(x: Boop, num: int):
-    print(f"hi from multiproc {num} {x}")
+    print(f"hi from multiproc {num} {x} {official_name}")
+
+
+def mp_init(x: int):
+    global official_name
+    official_name = uuid.uuid4()
+    print(f"hi from the multiproc init {x} {official_name}")
 
 
 @asset
 async def async_asset() -> MaterializeResult:
-    import multiprocessing
-
-    m1 = sleep_and_print("message 1", 5)
-    m2 = sleep_and_print("message 2", 1)
-    await asyncio.gather(m1, m2)
-
-    with ProcessPoolExecutor(8) as executor:
+    with ProcessPoolExecutor(8, initializer=mp_init, initargs=(1,)) as executor:
         futures = []
         for i in range(10):
             future = executor.submit(mp_test, Boop("a", "b"), i)
