@@ -377,7 +377,7 @@ class MPGoldskyDuckDB:
 glob_gs_duck: MPGoldskyDuckDB | None = None
 
 
-def mp_init(destination_path: str, config: GoldskyConfig):
+def mp_init(config: GoldskyConfig, destination_path: str):
     global glob_gs_duck
     glob_gs_duck = MPGoldskyDuckDB.connect(config, destination_path, "2GB")
     print("initialized a worker!!!!!!!!!!!!!!!")
@@ -406,11 +406,16 @@ async def mp_load_goldsky_worker(
         context.log.info(f"nothing to load for worker {worker}")
         return
     last_checkpoint = item.checkpoint - 1
-    destination_path = (f"_temp/{job_id}",)
+    destination_path = f"_temp/{job_id}"
 
     # Create the pool
     with ProcessPoolExecutor(
-        8, initializer=mp_init, initargs=(destination_path, config)
+        8,
+        initializer=mp_init,
+        initargs=(
+            config,
+            destination_path,
+        ),
     ) as executor:
         futures = []
         context.log.info("Starting the processing pool")
