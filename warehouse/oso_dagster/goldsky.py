@@ -15,6 +15,7 @@ class GoldskyConfig:
     table_name: str
     partition_column_name: str
     size: int
+    pointer_size: int
     bucket_key_id: str
     bucket_secret: str
 
