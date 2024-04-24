@@ -391,19 +391,17 @@ async def testing_goldsky(
     # For each worker
     for worker, queue in queues.worker_queues():
         context.log.info(f"Creating coroutines for worker {worker}")
-        worker_coroutines.append(
-            mp_load_goldsky_worker(
-                job_id,
-                context,
-                gs_config,
-                gs_context,
-                worker,
-                queue,
-                last_checkpoint_from_previous_run=worker_status.get(worker, None),
-            )
+        mp_load_goldsky_worker(
+            job_id,
+            context,
+            gs_config,
+            gs_context,
+            worker,
+            queue,
+            last_checkpoint_from_previous_run=worker_status.get(worker, None),
         )
 
-    await asyncio.gather(*worker_coroutines)
+    # await asyncio.gather(*worker_coroutines)
 
     # Create a temporary table to load the current checkpoint
 
