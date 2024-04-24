@@ -148,6 +148,7 @@ async def load_goldsky_worker(
     queue: GoldskyQueue,
     last_checkpoint_from_previous_run: Optional[int] = None,
 ):
+    context.log.info(f"starting the worker for {worker}")
     item = queue.dequeue()
     if not item:
         context.log.info(f"nothing to load for worker {worker}")
@@ -434,7 +435,7 @@ async def testing_goldsky(
 
     # For each worker
     for worker, queue in queues.worker_queues():
-        context.log.info(f"Loading for worker {worker}")
+        context.log.info(f"Creating coroutines for worker {worker}")
         worker_coroutines.append(
             load_goldsky_worker(
                 job_id,
