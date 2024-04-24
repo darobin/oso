@@ -138,7 +138,7 @@ def parse_interval_prefix(interval: Interval, prefix: str) -> arrow.Arrow:
     return arrow.get(prefix, "YYYYMMDD")
 
 
-def load_goldsky_worker(
+async def load_goldsky_worker(
     job_id: str,
     context: AssetExecutionContext,
     config: GoldskyConfig,
@@ -334,7 +334,7 @@ def load_goldsky_queue_item(
 
 
 @asset(key="optimism_traces")
-def testing_goldsky(
+async def testing_goldsky(
     context: AssetExecutionContext, bigquery: BigQueryResource, gcs: GCSResource
 ) -> MaterializeResult:
     goldsky_re = re.compile(
@@ -430,19 +430,25 @@ def testing_goldsky(
         os.environ.get("DUCKDB_MEMORY_LIMIT", "16GB"),
     )
 
+    worker_coroutines = []
+
     # For each worker
     for worker, queue in queues.worker_queues():
         context.log.info(f"Loading for worker {worker}")
-        load_goldsky_worker(
-            job_id,
-            context,
-            gs_config,
-            gs_context,
-            gs_duckdb,
-            worker,
-            queue,
-            last_checkpoint_from_previous_run=worker_status.get(worker, None),
+        worker_coroutines.append(
+            load_goldsky_worker(
+                job_id,
+                context,
+                gs_config,
+                gs_context,
+                gs_duckdb,
+                worker,
+                queue,
+                last_checkpoint_from_previous_run=worker_status.get(worker, None),
+            )
         )
+
+    await asyncio.gather(*worker_coroutines)
 
     # Create a temporary table to load the current checkpoint
 
@@ -621,7 +627,7 @@ def interval_gcs_import_asset(key: str, config: IntervalGCSAsset, **kwargs):
 
 
 async def sleep_and_print(msg: str, sleep: float):
-    asyncio.sleep(sleep)
+    await asyncio.sleep(sleep)
     print(msg)
 
 
