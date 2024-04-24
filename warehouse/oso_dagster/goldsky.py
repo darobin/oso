@@ -377,9 +377,12 @@ glob_gs_duck: MPGoldskyDuckDB | None = None
 def mp_init(destination_path: str, config: GoldskyConfig):
     global glob_gs_duck
     glob_gs_duck = MPGoldskyDuckDB.connect(config, destination_path, "2GB")
+    print("initialized a worker!!!!!!!!!!!!!!!")
 
 
 def mp_run_load(item: MPWorkerItem):
+    print("running worker!!!!!!!!!!!!!!!")
+    print(f"{item.blob_name}")
     glob_gs_duck.load_and_add_checkpoint(
         item.worker, item.checkpoint, item.blob_name, item.checkpoint
     )
