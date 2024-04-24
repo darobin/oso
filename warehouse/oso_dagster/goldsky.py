@@ -210,7 +210,6 @@ class GoldskyDuckDB:
             conn.sql(
                 f"""
             INSERT INTO {merged_table}
-            AS
             SELECT *
             FROM read_parquet('{file_ref}')
             ON CONFLICT DO NOTHING;
