@@ -1,3 +1,4 @@
+import time
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
 from queue import Empty
@@ -353,6 +354,7 @@ class MPGoldskyDuckDB:
     def load_and_add_checkpoint(
         self, worker: str, batch_id: int, blob_name: str, checkpoint: int
     ):
+        print("LOADING THE CHECKPOINT------------")
         conn = self.conn
         bucket_name = self.bucket_name
 
@@ -367,7 +369,6 @@ class MPGoldskyDuckDB:
         """
 
         print(query)
-        import time
 
         time.sleep(10)
         conn.sql(query)
@@ -441,7 +442,7 @@ async def mp_load_goldsky_worker(
                 ),
             )
             context.log.debug(f"wrapping future for {item.blob_name}")
-            asyncio.wrap_future(future)
+            futures.append(asyncio.wrap_future(future))
         await asyncio.gather(*futures)
 
     # Load all of the tables into bigquery
