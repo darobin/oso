@@ -64,7 +64,6 @@ const GET_ALL_PROJECTS = gql(`
   query Projects @cached(ttl: 300) {
     projects {
       project_id
-      user_namespace
       project_slug
       project_name
     }
@@ -75,7 +74,6 @@ const GET_PROJECTS_BY_IDS = gql(`
   query ProjectsByIds($project_ids: [String!]) @cached(ttl: 300) {
     projects(where: { project_id: { _in: $project_ids }}) {
       project_id
-      user_namespace
       project_slug
       project_name
     }
@@ -84,9 +82,8 @@ const GET_PROJECTS_BY_IDS = gql(`
 
 const GET_PROJECTS_BY_SLUGS = gql(`
   query ProjectsBySlugs($project_slugs: [String!]) @cached(ttl: 300) {
-    projects(where: { project_slug: { _in: $project_slugs }, user_namespace: { _eq: "oso" } }) {
+    projects(where: { project_slug: { _in: $project_slugs } }) {
       project_id
-      user_namespace
       project_slug
       project_name
     }
@@ -152,7 +149,6 @@ const GET_CODE_METRICS_BY_PROJECT = gql(`
       project_id
       project_name
       stars
-      source
       repositories
       pull_requests_opened_6_months
       pull_requests_merged_6_months
