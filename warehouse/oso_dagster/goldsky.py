@@ -195,8 +195,8 @@ class GoldskyDuckDB:
         )
 
         for batch_item in batch_items:
-            self.log.info(f"Inserting all items in {base}/{batch_item}")
-            file_ref = f"{base}/{batch_item}"
+            self.log.info(f"Inserting all items in {base}/{batch_item.blob_name}")
+            file_ref = f"{base}/{batch_item.blob_name}"
             # TO DO CHECK FOR DUPES IN THE SAME CHECKPOINT
             conn.sql(
                 f"""
