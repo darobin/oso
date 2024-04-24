@@ -586,12 +586,18 @@ async def sleep_and_print(msg: str, sleep: float):
     print(msg)
 
 
-def mp_test(num: int):
-    print(f"hi from multiproc {num}")
+@dataclass
+class Boop:
+    foo: str
+    bar: str
+
+
+def mp_test(x: Boop, num: int):
+    print(f"hi from multiproc {num} {x}")
 
 
 @asset
-async def async_asset(context: AssetExecutionContext) -> MaterializeResult:
+async def async_asset() -> MaterializeResult:
     import multiprocessing
 
     m1 = sleep_and_print("message 1", 5)
@@ -601,7 +607,7 @@ async def async_asset(context: AssetExecutionContext) -> MaterializeResult:
     with ProcessPoolExecutor(8) as executor:
         futures = []
         for i in range(10):
-            future = executor.submit(mp_test, context.log, i)
+            future = executor.submit(mp_test, Boop("a", "b"), i)
             futures.append(asyncio.wrap_future(future))
         print("wait for the pool to finish")
         await asyncio.gather(*futures)

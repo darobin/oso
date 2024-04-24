@@ -430,12 +430,10 @@ async def mp_load_goldsky_worker(
                 break
             future = executor.submit(
                 mp_run_load,
-                args=(
-                    MPWorkerItem(
-                        worker=worker,
-                        blob_name=item.blob_name,
-                        checkpoint=item.checkpoint,
-                    )
+                MPWorkerItem(
+                    worker=worker,
+                    blob_name=item.blob_name,
+                    checkpoint=item.checkpoint,
                 ),
             )
             context.log.debug(f"wrapping future for {item.blob_name}")
