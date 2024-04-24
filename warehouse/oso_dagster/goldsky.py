@@ -207,12 +207,13 @@ class GoldskyDuckDB:
         for blob_name in reverse_blobs:
             self.log.info(f"Creating a view for blob {base}/{blob_name}")
             file_ref = f"{base}/{blob_name}"
+            # TO DO CHECK FOR DUPES IN THE SAME CHECKPOINT
             conn.sql(
                 f"""
             INSERT INTO {merged_table}
-            SELECT *
+            SELECT DISTINCT ON (id) *
             FROM read_parquet('{file_ref}')
-            ON CONFLICT DO NOTHING;
+            ON CONFLICT (id) DO NOTHING;
             """
             )
 
