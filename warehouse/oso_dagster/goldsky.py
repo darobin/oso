@@ -409,7 +409,7 @@ async def mp_load_goldsky_worker(
 
     # Create the pool
     with ProcessPoolExecutor(
-        initializer=mp_init, initargs=(destination_path, config)
+        8, initializer=mp_init, initargs=(destination_path, config)
     ) as executor:
         while item:
             if item.checkpoint > last_checkpoint:

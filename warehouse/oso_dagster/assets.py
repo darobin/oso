@@ -1,3 +1,4 @@
+from concurrent.futures import ProcessPoolExecutor
 import os
 import re
 import arrow
@@ -31,6 +32,7 @@ from dagster import (
     RunConfig,
     OpExecutionContext,
     DefaultSensorStatus,
+    DagsterLogManager,
 )
 from dagster_gcp import BigQueryResource, GCSResource
 
@@ -584,21 +586,25 @@ async def sleep_and_print(msg: str, sleep: float):
     print(msg)
 
 
-def mp_test():
-    print("hi from multiproc")
+def mp_test(num: int):
+    print(f"hi from multiproc {num}")
 
 
 @asset
-async def async_asset() -> MaterializeResult:
+async def async_asset(context: AssetExecutionContext) -> MaterializeResult:
     import multiprocessing
 
     m1 = sleep_and_print("message 1", 5)
     m2 = sleep_and_print("message 2", 1)
     await asyncio.gather(m1, m2)
 
-    p = multiprocessing.Process(target=mp_test)
-    p.start()
-    p.join()
+    with ProcessPoolExecutor(8) as executor:
+        futures = []
+        for i in range(10):
+            future = executor.submit(mp_test, context.log, i)
+            futures.append(asyncio.wrap_future(future))
+        print("wait for the pool to finish")
+        await asyncio.gather(*futures)
 
     return MaterializeResult(metadata={"boop": True})
 
