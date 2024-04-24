@@ -359,14 +359,15 @@ class MPGoldskyDuckDB:
         base = f"gs://{bucket_name}"
 
         # Start in reverse order and insert into the table
-        conn.sql(
-            f"""
+        query = f"""
         COPY (
-            SELECT {checkpoint}, *
+            SELECT {checkpoint} as _checkpoint, *
             FROM read_parquet('{base}/{blob_name}')
         ) TO '{self.full_dest_table_path(worker, batch_id)}';
         """
-        )
+
+        print(query)
+        conn.sql(query)
 
         print(f"Completed load {blob_name}")
 
