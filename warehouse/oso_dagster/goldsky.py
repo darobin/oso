@@ -190,7 +190,7 @@ class GoldskyDuckDB:
         CREATE TEMP TABLE {merged_table}
         AS
         SELECT {batch_items[0].checkpoint} AS _checkpoint, *
-        FROM read_parquet('{base}/{batch_items[-1]}')
+        FROM read_parquet('{base}/{batch_items[-1].blob_name}')
         """
         )
 
