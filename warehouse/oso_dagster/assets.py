@@ -399,8 +399,7 @@ async def testing_goldsky(
     for worker, queue in queues.worker_queues():
         context.log.info(f"Creating coroutines for worker {worker}")
         worker_coroutines.append(
-            asyncio.to_thread(
-                load_goldsky_worker,
+            load_goldsky_worker(
                 job_id,
                 context,
                 gs_config,
