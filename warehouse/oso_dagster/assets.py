@@ -37,7 +37,15 @@ from dagster_gcp import BigQueryResource, GCSResource
 
 from dagster_dbt import DbtCliResource, dbt_assets, DagsterDbtTranslator
 from .constants import main_dbt_manifest_path
-from .goldsky import GoldskyDuckDB
+from .goldsky import (
+    GoldskyDuckDB,
+    GoldskyQueueItem,
+    GoldskyConfig,
+    GoldskyAsset,
+    GoldskyContext,
+    GoldskyQueue,
+    GoldskyQueues,
+)
 
 
 class Interval(Enum):
@@ -128,113 +136,8 @@ class AssetFactoryResponse:
     jobs: List[JobDefinition]
 
 
-@op
-def what(context: OpExecutionContext):
-    context.log.info("hi i'm in the what")
-
-
-@job
-def boop():
-    what()
-
-
 def parse_interval_prefix(interval: Interval, prefix: str) -> arrow.Arrow:
     return arrow.get(prefix, "YYYYMMDD")
-
-
-class GenericGCSAsset:
-    def clean_up(self):
-        raise NotImplementedError()
-
-    def sync(self):
-        raise NotImplementedError()
-
-
-class GoldskyAsset(GenericGCSAsset):
-    def clean_up(self):
-        pass
-
-
-@dataclass
-class GoldskyConfig:
-    project_id: str
-    bucket_name: str
-    dataset_name: str
-    table_name: str
-    partition_column_name: str
-    size: int
-    bucket_key_id: str
-    bucket_secret: str
-
-
-@dataclass
-class GoldskyContext:
-    bigquery: BigQueryResource
-    gcs: GCSResource
-
-
-@dataclass
-class GoldskyQueueItem:
-    checkpoint: int
-    blob_name: str
-
-    def __lt__(self, other):
-        return self.checkpoint < other.checkpoint
-
-
-class GoldskyQueue:
-    def __init__(self, max_size: int):
-        self.queue = []
-        self._dequeues = 0
-        self.max_size = max_size
-
-    def enqueue(self, item: GoldskyQueueItem):
-        heapq.heappush(self.queue, item)
-
-    def dequeue(self) -> GoldskyQueueItem | None:
-        if self._dequeues > self.max_size - 1:
-            return None
-        try:
-            item = heapq.heappop(self.queue)
-            self._dequeues += 1
-            return item
-        except IndexError:
-            return None
-
-    def len(self):
-        return len(self.queue)
-
-
-class GoldskyQueues:
-    def __init__(self, max_size: int):
-        self.queues: Mapping[str, GoldskyQueue] = {}
-        self.max_size = max_size
-
-    def enqueue(self, worker: str, item: GoldskyQueueItem):
-        queue = self.queues.get(worker, GoldskyQueue(max_size=self.max_size))
-        queue.enqueue(item)
-        self.queues[worker] = queue
-
-    def dequeue(self, worker: str) -> GoldskyQueueItem | None:
-        queue = self.queues.get(worker, GoldskyQueue(max_size=self.max_size))
-        return queue.dequeue()
-
-    def workers(self):
-        return self.queues.keys()
-
-    def status(self):
-        status: Mapping[str, int] = {}
-        for worker, queue in self.queues.items():
-            status[worker] = queue.len()
-        return status
-
-    def worker_queues(self):
-        return self.queues.items()
-
-
-class GoldskyWorkerLoader:
-    def __init__(self, worker: str):
-        pass
 
 
 def load_goldsky_worker(
@@ -456,7 +359,7 @@ def testing_goldsky(
 
     parsed_files = []
     gs_job_ids = set()
-    queues = GoldskyQueues(max_size=int(os.environ.get("GOLDSKY_MAX_QUEUE_SIZE", 5000)))
+    queues = GoldskyQueues(max_size=int(os.environ.get("GOLDSKY_MAX_QUEUE_SIZE", 200)))
 
     worker_status: Mapping[str, int] = {}
     # Get the current state
@@ -526,6 +429,7 @@ def testing_goldsky(
         gs_config.bucket_secret,
         os.environ.get("DAGSTER_DUCKDB_PATH"),
         context.log,
+        os.environ.get("DUCKDB_MEMORY_LIMIT", "16GB"),
     )
 
     # For each worker

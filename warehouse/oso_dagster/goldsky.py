@@ -1,7 +1,97 @@
-from typing import List, Optional
-import uuid
+from dataclasses import dataclass
+from typing import List, Mapping
+import heapq
 import duckdb
 from dagster import DagsterLogManager
+from .common import GenericGCSAsset
+from dagster_gcp import BigQueryResource, GCSResource
+
+
+class GoldskyAsset(GenericGCSAsset):
+    def clean_up(self):
+        pass
+
+
+@dataclass
+class GoldskyConfig:
+    project_id: str
+    bucket_name: str
+    dataset_name: str
+    table_name: str
+    partition_column_name: str
+    size: int
+    bucket_key_id: str
+    bucket_secret: str
+
+
+@dataclass
+class GoldskyContext:
+    bigquery: BigQueryResource
+    gcs: GCSResource
+
+
+class GoldskyWorkerLoader:
+    def __init__(self, worker: str):
+        pass
+
+
+@dataclass
+class GoldskyQueueItem:
+    checkpoint: int
+    blob_name: str
+
+    def __lt__(self, other):
+        return self.checkpoint < other.checkpoint
+
+
+class GoldskyQueue:
+    def __init__(self, max_size: int):
+        self.queue = []
+        self._dequeues = 0
+        self.max_size = max_size
+
+    def enqueue(self, item: GoldskyQueueItem):
+        heapq.heappush(self.queue, item)
+
+    def dequeue(self) -> GoldskyQueueItem | None:
+        if self._dequeues > self.max_size - 1:
+            return None
+        try:
+            item = heapq.heappop(self.queue)
+            self._dequeues += 1
+            return item
+        except IndexError:
+            return None
+
+    def len(self):
+        return len(self.queue)
+
+
+class GoldskyQueues:
+    def __init__(self, max_size: int):
+        self.queues: Mapping[str, GoldskyQueue] = {}
+        self.max_size = max_size
+
+    def enqueue(self, worker: str, item: GoldskyQueueItem):
+        queue = self.queues.get(worker, GoldskyQueue(max_size=self.max_size))
+        queue.enqueue(item)
+        self.queues[worker] = queue
+
+    def dequeue(self, worker: str) -> GoldskyQueueItem | None:
+        queue = self.queues.get(worker, GoldskyQueue(max_size=self.max_size))
+        return queue.dequeue()
+
+    def workers(self):
+        return self.queues.keys()
+
+    def status(self):
+        status: Mapping[str, int] = {}
+        for worker, queue in self.queues.items():
+            status[worker] = queue.len()
+        return status
+
+    def worker_queues(self):
+        return self.queues.items()
 
 
 class GoldskyDuckDB:
@@ -73,7 +163,7 @@ class GoldskyDuckDB:
                 f""" 
             DELETE FROM deduped_{worker}_{batch_id}
             WHERE id in (
-                SELECT id FROM read_parquest('{self.full_dest_delete_path(worker, batch_id)}')
+                SELECT id FROM read_parquet('{self.full_dest_delete_path(worker, batch_id)}')
             )
             """
             )
@@ -92,20 +182,20 @@ class GoldskyDuckDB:
 
         size = len(blob_names)
 
-        checkpoint_views: List[str] = []
+        checkpoint_temp_tables: List[str] = []
         for i in range(size):
             self.log.info(f"Creating a view for blob {base}/{blob_names[i]}")
             file_ref = f"{base}/{blob_names[i]}"
-            checkpoint_view = f"checkpoint_{worker}_{batch_id}_{i}"
+            checkpoint_temp_table = f"checkpoint_{worker}_{batch_id}_{i}"
             conn.sql(
                 f"""
-            CREATE OR REPLACE VIEW {checkpoint_view}
+            CREATE TEMP TABLE {checkpoint_temp_table}
             AS
-            SELECT *
+            SELECT {i} AS checkpoint_order, *
             FROM read_parquet('{file_ref}');
             """
             )
-            checkpoint_views.append(checkpoint_view)
+            checkpoint_temp_tables.append(checkpoint_temp_table)
 
         merged_table = f"merged_{worker}_{batch_id}"
         conn.sql(
@@ -119,7 +209,7 @@ class GoldskyDuckDB:
 
         for i in range(size - 1):
             self.log.debug(f"Merging {blob_names[i+1]}")
-            checkpoint_table = checkpoint_views[i + 1]
+            checkpoint_table = checkpoint_temp_tables[i + 1]
             rows = conn.sql(
                 f"""
             SELECT *
@@ -194,17 +284,17 @@ class GoldskyDuckDB:
         """
         )
         self.log.info(f"Completed load and merge {batch_id}")
-        for checkpoint_view in checkpoint_views:
+        for checkpoint_temp_table in checkpoint_temp_tables:
             try:
                 conn.sql(
                     f"""
-                DROP VIEW {checkpoint_view}
+                DROP TABLE {checkpoint_temp_table}
                 """
                 )
             except:
                 # Ignore view dropping errors
                 self.log.warn(
-                    f"error occured dropping checkpoint view: {checkpoint_view}"
+                    f"error occured dropping checkpoint temp table: {checkpoint_temp_table}"
                 )
 
 
