@@ -428,20 +428,18 @@ async def mp_load_goldsky_worker(
             item = queue.dequeue()
             if not item:
                 break
-            futures.append(
-                asyncio.wrap_future(
-                    executor.submit(
-                        mp_run_load,
-                        args=(
-                            MPWorkerItem(
-                                worker=worker,
-                                blob_name=item.blob_name,
-                                checkpoint=item.checkpoint,
-                            )
-                        ),
+            future = executor.submit(
+                mp_run_load,
+                args=(
+                    MPWorkerItem(
+                        worker=worker,
+                        blob_name=item.blob_name,
+                        checkpoint=item.checkpoint,
                     )
-                )
+                ),
             )
+            context.log.debug(f"wrapping future for {item.blob_name}")
+            asyncio.wrap_future(future)
         await asyncio.gather(*futures)
 
     # Load all of the tables into bigquery
