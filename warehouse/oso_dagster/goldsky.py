@@ -388,7 +388,7 @@ def mp_run_load(item: MPWorkerItem):
     )
 
 
-def mp_load_goldsky_worker(
+async def mp_load_goldsky_worker(
     job_id: str,
     context: AssetExecutionContext,
     config: GoldskyConfig,

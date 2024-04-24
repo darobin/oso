@@ -391,7 +391,7 @@ async def testing_goldsky(
     # For each worker
     for worker, queue in queues.worker_queues():
         context.log.info(f"Creating coroutines for worker {worker}")
-        mp_load_goldsky_worker(
+        await mp_load_goldsky_worker(
             job_id,
             context,
             gs_config,
