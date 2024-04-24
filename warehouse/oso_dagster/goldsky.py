@@ -194,10 +194,12 @@ class GoldskyDuckDB:
         """
         )
 
+        merge_index = f"merging_unique_{worker}_{batch_id}"
+
         # Create a unique constraint on the id field
         conn.sql(
             f"""
-        CREATE UNIQUE INDEX merging_unique ON {merged_table} (id);
+        CREATE UNIQUE INDEX {merge_index} ON {merged_table} (id);
         """
         )
 
