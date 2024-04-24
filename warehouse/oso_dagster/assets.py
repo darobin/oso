@@ -154,9 +154,9 @@ def load_goldsky_worker(
         context.log.info(f"nothing to load for worker {worker}")
         return
     last_checkpoint = item.checkpoint - 1
-    batch_to_load: List[str] = [item.blob_name]
-    batches: List[int] = []
+    batch_to_load: List[GoldskyQueueItem] = [item]
     current_batch = 0
+
     while item:
         if item.checkpoint > last_checkpoint:
             if item.checkpoint - 1 != last_checkpoint:
@@ -174,7 +174,7 @@ def load_goldsky_worker(
         item = queue.dequeue()
         if not item:
             break
-        batch_to_load.append(item.blob_name)
+        batch_to_load.append(item)
 
         if len(batch_to_load) > config.size:
             gs_duckdb.load_and_merge(
@@ -182,7 +182,6 @@ def load_goldsky_worker(
                 current_batch,
                 batch_to_load,
             )
-            batches.append(current_batch)
             current_batch += 1
             batch_to_load = []
     if len(batch_to_load) > 0:
@@ -191,7 +190,6 @@ def load_goldsky_worker(
             current_batch,
             batch_to_load,
         )
-        batches.append(current_batch)
         current_batch += 1
         batch_to_load = []
 
@@ -302,6 +300,7 @@ async def testing_goldsky(
         "optimism_traces",
         "block_number",
         int(os.environ.get("GOLDSKY_BATCH_SIZE", "40")),
+        int(os.environ.get("GOLDSKY_CHECKPOINT_SIZE", "1000")),
         os.environ.get("DUCKDB_GCS_KEY_ID"),
         os.environ.get("DUCKDB_GCS_SECRET"),
     )
