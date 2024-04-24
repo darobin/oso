@@ -2,6 +2,7 @@ import os
 import re
 import arrow
 import asyncio
+import concurrent.futures
 from typing import Any, Mapping, List, Optional
 from enum import Enum
 from pathlib import Path
@@ -138,7 +139,7 @@ def parse_interval_prefix(interval: Interval, prefix: str) -> arrow.Arrow:
     return arrow.get(prefix, "YYYYMMDD")
 
 
-async def load_goldsky_worker(
+def load_goldsky_worker(
     job_id: str,
     context: AssetExecutionContext,
     config: GoldskyConfig,
@@ -198,7 +199,7 @@ async def load_goldsky_worker(
     # Reprocess each of the batches and delete using the deletion tables
     gs_duckdb.remove_dupes(worker, batches)
 
-    # Load all of the tables into goldsky
+    # Load all of the tables into bigquery
     with gs_context.bigquery.get_client() as client:
         dest_table_ref = client.get_dataset(config.dataset_name).table(
             f"{config.table_name}_{worker}"
@@ -267,45 +268,6 @@ async def load_goldsky_worker(
             """
             )
             context.log.info(rows)
-
-
-def goldsky_into_worker_table(
-    context: AssetExecutionContext,
-    project_id: str,
-    bucket_name: str,
-    dataset_name: str,
-    table_name: str,
-    partition_column_name: str,
-    bigquery: BigQueryResource,
-    worker: str,
-    table_ref_to_merge: TableReference,
-):
-    with bigquery.get_client() as bq_client:
-        worker_table_name = f"{table_name}_worker_{worker}_checkpoint_premerge"
-        worker_table = f"{project_id}.{dataset_name}.{worker_table_name}"
-        try:
-            bq_client.get_table(worker_table)
-        except NotFound as exc:
-            if worker_table_name in exc.message:
-                # The table doesn't exist so we need to copy
-                job = bq_client.query(
-                    f"""
-                SELECT * 
-                FROM `{table_ref_to_merge.project}`.`{table_ref_to_merge.dataset_id}`.`{table_ref_to_merge.table_id}`
-                """,
-                    job_config=QueryJobConfig(
-                        range_partitioning=RangePartitioning(
-                            PartitionRange(
-                                0,
-                                1_200_000_000,
-                                250_000,
-                            )
-                        )
-                    ),
-                )
-                pass
-            else:
-                raise exc
 
 
 def load_goldsky_queue_item(
@@ -437,7 +399,8 @@ async def testing_goldsky(
     for worker, queue in queues.worker_queues():
         context.log.info(f"Creating coroutines for worker {worker}")
         worker_coroutines.append(
-            load_goldsky_worker(
+            asyncio.to_thread(
+                load_goldsky_worker,
                 job_id,
                 context,
                 gs_config,
