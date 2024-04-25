@@ -1,5 +1,6 @@
 import time
 import asyncio
+import os
 from concurrent.futures import ProcessPoolExecutor
 from queue import Empty
 import multiprocessing as mp
@@ -7,7 +8,7 @@ from dataclasses import dataclass
 from typing import List, Mapping, Optional
 import heapq
 import duckdb
-from dagster import DagsterLogManager, AssetExecutionContext
+from dagster import DagsterLogManager, AssetExecutionContext, MaterializeResult
 from dagster_gcp import BigQueryResource, GCSResource
 from google.api_core.exceptions import NotFound
 
@@ -112,7 +113,9 @@ class GoldskyProcess:
                 log_queue,
                 config,
             ),
-            kwargs={"memory_limit": "3GB"},
+            kwargs={
+                "memory_limit": os.environ.get("GOLDSKY_PROCESS_DUCKDB_MEMORY", "2GB")
+            },
         )
         proc.start()
         return cls(proc, queue)
@@ -383,15 +386,15 @@ class MPGoldskyDuckDB:
 
 
 glob_gs_duck: MPGoldskyDuckDB | None = None
-dagLog: MultiProcessLogger | None = None
+dagster_log: MultiProcessLogger | None = None
 
 
 def mp_init(log: MultiProcessLogger, config: GoldskyConfig, destination_path: str):
     global glob_gs_duck
-    global dagLog
-    dagLog = log
+    global dagster_log
+    dagster_log = log
     glob_gs_duck = MPGoldskyDuckDB.connect(config, destination_path, "2GB")
-    print("initialized a worker!!!!!!!!!!!!!!!")
+    log.debug("inititalized worker")
 
 
 def mp_run_load(item: MPWorkerItem):
@@ -400,7 +403,7 @@ def mp_run_load(item: MPWorkerItem):
         item.checkpoint,
         item.blob_name,
         item.checkpoint,
-        dagLog,
+        dagster_log,
     )
 
 
@@ -424,7 +427,7 @@ async def mp_load_goldsky_worker(
 
     # Create the pool
     with ProcessPoolExecutor(
-        8,
+        int(os.environ.get("GOLDSKY_PROCESS_POOL_SIZE", "10")),
         initializer=mp_init,
         initargs=(
             MultiProcessLogger(log_queue),
@@ -550,7 +553,7 @@ async def mp_load_goldsky_worker(
                 LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}`
                 FROM FILES (
                     format = "PARQUET",
-                    uris = ["{gs_duckdb.wildcard_path(worker)}"]
+                    uris = ["{wildcard_path}"]
                 );
             """
             context.log.debug(f"query: {query1}")
@@ -562,3 +565,143 @@ async def mp_load_goldsky_worker(
             """
             )
             context.log.info(rows)
+
+
+async def testing_goldsky(
+    context: AssetExecutionContext, bigquery: BigQueryResource, gcs: GCSResource
+) -> MaterializeResult:
+    goldsky_re = re.compile(
+        os.path.join("goldsky", "optimism-traces")
+        + r"/(?P<job_id>\d+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(?P<worker>\d+)-(?P<checkpoint>\d+).parquet"
+    )
+    gs_config = GoldskyConfig(
+        "opensource-observer",
+        "oso-dataset-transfer-bucket",
+        "oso_raw_sources",
+        "optimism_traces",
+        "block_number",
+        int(os.environ.get("GOLDSKY_BATCH_SIZE", "40")),
+        int(os.environ.get("GOLDSKY_CHECKPOINT_SIZE", "1000")),
+        os.environ.get("DUCKDB_GCS_KEY_ID"),
+        os.environ.get("DUCKDB_GCS_SECRET"),
+    )
+
+    gcs_client = gcs.get_client()
+    blobs = gcs_client.list_blobs("oso-dataset-transfer-bucket", prefix="goldsky")
+
+    parsed_files = []
+    gs_job_ids = set()
+    queues = GoldskyQueues(max_size=int(os.environ.get("GOLDSKY_MAX_QUEUE_SIZE", 200)))
+
+    worker_status: Mapping[str, int] = {}
+    # Get the current state
+    with bigquery.get_client() as client:
+        try:
+            rows = client.query_and_wait(
+                f"""
+            SELECT worker, MAX(last_checkpoint) AS last_checkpoint
+            FROM `{gs_config.project_id}.{gs_config.dataset_name}.{gs_config.table_name}_pointer_state`
+            GROUP BY 1;
+            """
+            )
+            for row in rows:
+                context.log.debug(row)
+                worker_status[row.worker] = row.last_checkpoint
+        except NotFound:
+            context.log.info("No pointer status found. Will create the table later")
+
+    for blob in blobs:
+        match = goldsky_re.match(blob.name)
+        if not match:
+            context.log.debug(f"skipping {blob.name}")
+            continue
+        parsed_files.append(match)
+        worker = match.group("worker")
+        gs_job_ids.add(match.group("job_id"))
+        checkpoint = int(match.group("checkpoint"))
+        if checkpoint <= worker_status.get(worker, -1):
+            context.log.debug(f"skipping {blob.name} as it was already processed")
+            continue
+        queues.enqueue(
+            worker,
+            GoldskyQueueItem(
+                checkpoint,
+                blob.name,
+            ),
+        )
+
+    if len(gs_job_ids) > 1:
+        raise Exception("We aren't currently handling multiple job ids")
+
+    gs_context = GoldskyContext(bigquery, gcs)
+
+    job_id = arrow.now().format("YYYYMMDDHHmm")
+
+    pointer_table = f"{gs_config.project_id}.{gs_config.dataset_name}.{gs_config.table_name}_pointer_state"
+
+    with bigquery.get_client() as client:
+        dataset = client.get_dataset(gs_config.dataset_name)
+        table_name = f"{gs_config.table_name}_pointer_state"
+        pointer_table_ref = dataset.table(table_name)
+        try:
+            client.get_table(pointer_table_ref)
+        except NotFound as exc:
+            if table_name in exc.message:
+                context.log.info("Pointer table not found.")
+                client.query_and_wait(
+                    f"""
+                CREATE TABLE {pointer_table} (worker STRING, last_checkpoint INT64);
+                """
+                )
+            else:
+                raise exc
+
+    # gs_duckdb = GoldskyDuckDB.connect(
+    #     f"_temp/{job_id}",
+    #     gs_config.bucket_name,
+    #     gs_config.bucket_key_id,
+    #     gs_config.bucket_secret,
+    #     os.environ.get("DAGSTER_DUCKDB_PATH"),
+    #     context.log,
+    #     os.environ.get("DUCKDB_MEMORY_LIMIT", "16GB"),
+    # )
+
+    worker_coroutines = []
+
+    # For each worker
+    for worker, queue in queues.worker_queues():
+        context.log.info(f"Creating coroutines for worker {worker}")
+        await mp_load_goldsky_worker(
+            job_id,
+            context,
+            gs_config,
+            gs_context,
+            worker,
+            queue,
+            last_checkpoint_from_previous_run=worker_status.get(worker, None),
+        )
+
+    # await asyncio.gather(*worker_coroutines)
+
+    # Create a temporary table to load the current checkpoint
+
+    # Check for duplicates between the current checkpoint and the existing table
+    # of data
+
+    # In a transaction
+    # -- Merge the dataset into the main table
+    # -- Update a source pointer for the current checkpoint (so we don't reprocess)
+    # -- Delete the temporary table
+
+    # TODOS
+    # Move the data into cold storage
+
+    return MaterializeResult(
+        metadata=dict(
+            job_id_count=len(gs_job_ids),
+            job_ids=list(gs_job_ids),
+            worker_count=len(queues.workers()),
+            workers=list(queues.workers()),
+            status=queues.status(),
+        )
+    )
