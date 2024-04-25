@@ -149,7 +149,6 @@ class MPWorkerItem:
     worker: str
     blob_name: str
     checkpoint: int
-    log: MultiProcessLogger
 
 
 def goldsky_process_worker(
@@ -384,10 +383,13 @@ class MPGoldskyDuckDB:
 
 
 glob_gs_duck: MPGoldskyDuckDB | None = None
+dagLog: MultiProcessLogger | None = None
 
 
-def mp_init(config: GoldskyConfig, destination_path: str):
+def mp_init(log: MultiProcessLogger, config: GoldskyConfig, destination_path: str):
     global glob_gs_duck
+    global dagLog
+    dagLog = log
     glob_gs_duck = MPGoldskyDuckDB.connect(config, destination_path, "2GB")
     print("initialized a worker!!!!!!!!!!!!!!!")
 
@@ -398,7 +400,7 @@ def mp_run_load(item: MPWorkerItem):
         item.checkpoint,
         item.blob_name,
         item.checkpoint,
-        item.log,
+        dagLog,
     )
 
 
@@ -418,12 +420,14 @@ async def mp_load_goldsky_worker(
         return
     last_checkpoint = item.checkpoint - 1
     destination_path = f"_temp/{job_id}"
+    log_queue = mp.Queue()
 
     # Create the pool
     with ProcessPoolExecutor(
         8,
         initializer=mp_init,
         initargs=(
+            MultiProcessLogger(log_queue),
             config,
             destination_path,
         ),
@@ -431,8 +435,6 @@ async def mp_load_goldsky_worker(
         futures = []
         context.log.info("Starting the processing pool")
         time.sleep(5)
-
-        log_queue = mp.Queue()
 
         async def handle_logs():
             context.log.debug("starting multiproc log handler")
@@ -484,7 +486,6 @@ async def mp_load_goldsky_worker(
                     worker=worker,
                     blob_name=item.blob_name,
                     checkpoint=item.checkpoint,
-                    log=MultiProcessLogger(log_queue),
                 ),
             )
             context.log.debug(f"wrapping future for {item.blob_name}")
