@@ -132,13 +132,16 @@ class GoldskyProcess:
 
 class MultiProcessLogger:
     def __init__(self, queue: mp.Queue):
-        pass
+        self.queue = queue
 
-    def debug(self, *args):
-        pass
+    def debug(self, message: str):
+        self.queue.put(["debug", message])
 
-    def info(self, *args):
-        pass
+    def info(self, message: str):
+        self.queue.put(["info", message])
+
+    def warn(self, message: str):
+        self.queue.put(["warn", message])
 
 
 @dataclass
@@ -146,6 +149,7 @@ class MPWorkerItem:
     worker: str
     blob_name: str
     checkpoint: int
+    log: MultiProcessLogger
 
 
 def goldsky_process_worker(
@@ -420,6 +424,36 @@ async def mp_load_goldsky_worker(
         futures = []
         context.log.info("Starting the processing pool")
         time.sleep(5)
+
+        log_queue = mp.Queue()
+
+        async def handle_logs():
+            context.log.debug("starting multiproc log handler")
+            while True:
+                try:
+                    log_item = log_queue.get(block=False)
+                    if type(log_item) != list:
+                        context.log.warn(
+                            "received unexpected object in the multiproc logs"
+                        )
+                        continue
+                    else:
+                        if log_item[0] == "debug":
+                            context.log.debug(log_item[1])
+                        if log_item[0] == "info":
+                            context.log.info(log_item[1])
+                        if log_item[0] == "warn":
+                            context.log.warn(log_item[1])
+
+                except Empty:
+                    pass
+                try:
+                    await asyncio.sleep(0.1)
+                except asyncio.CancelledError:
+                    break
+
+        log_task = asyncio.create_task(handle_logs())
+
         while item:
             if item.checkpoint > last_checkpoint:
                 if item.checkpoint - 1 != last_checkpoint:
@@ -443,11 +477,14 @@ async def mp_load_goldsky_worker(
                     worker=worker,
                     blob_name=item.blob_name,
                     checkpoint=item.checkpoint,
+                    log=MultiProcessLogger(log_queue),
                 ),
             )
             context.log.debug(f"wrapping future for {item.blob_name}")
             futures.append(asyncio.wrap_future(future))
         await asyncio.gather(*futures)
+
+        log_task.cancel()
 
     # Load all of the tables into bigquery
     with gs_context.bigquery.get_client() as client:
@@ -462,6 +499,10 @@ async def mp_load_goldsky_worker(
                 raise exc
             new = True
 
+        wildcard_path = (
+            f"gs://{config.bucket_name}/{destination_path}/{worker}/table_*.parquet"
+        )
+
         if not new:
             context.log.info("Merging into worker table")
             client.query_and_wait(
@@ -469,7 +510,7 @@ async def mp_load_goldsky_worker(
                 LOAD DATA OVERWRITE `{config.project_id}.{config.dataset_name}.{config.table_name}_{worker}_{job_id}`
                 FROM FILES (
                     format = "PARQUET",
-                    uris = ["{gs_duckdb.wildcard_path(worker)}"]
+                    uris = ["{wildcard_path}"]
                 );
             """
             )
