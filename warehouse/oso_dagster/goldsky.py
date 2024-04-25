@@ -356,9 +356,14 @@ class MPGoldskyDuckDB:
         )
 
     def load_and_add_checkpoint(
-        self, worker: str, batch_id: int, blob_name: str, checkpoint: int
+        self,
+        worker: str,
+        batch_id: int,
+        blob_name: str,
+        checkpoint: int,
+        log: MultiProcessLogger,
     ):
-        print("LOADING THE CHECKPOINT------------")
+        log.debug("LOADING THE CHECKPOINT------------")
         conn = self.conn
         bucket_name = self.bucket_name
 
@@ -372,10 +377,10 @@ class MPGoldskyDuckDB:
         ) TO '{self.full_dest_table_path(worker, batch_id)}';
         """
 
-        print(query)
+        log.debug(f"Running query {query}")
         conn.sql(query)
 
-        print(f"Completed load {blob_name}")
+        log.info(f"Completed load {blob_name}")
 
 
 glob_gs_duck: MPGoldskyDuckDB | None = None
@@ -388,10 +393,12 @@ def mp_init(config: GoldskyConfig, destination_path: str):
 
 
 def mp_run_load(item: MPWorkerItem):
-    print("running worker!!!!!!!!!!!!!!!")
-    print(f"{item.blob_name}")
     glob_gs_duck.load_and_add_checkpoint(
-        item.worker, item.checkpoint, item.blob_name, item.checkpoint
+        item.worker,
+        item.checkpoint,
+        item.blob_name,
+        item.checkpoint,
+        item.log,
     )
 
 
